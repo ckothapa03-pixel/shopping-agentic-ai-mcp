@@ -1,0 +1,19 @@
+# Environment variables and secrets
+.env
+.env.*
+
+# Python virtual environments
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local database containing shopping records
+shopping.db
+
+# Editor and operating system files
+.vscode/
+.DS_Store
+Thumbs.db
