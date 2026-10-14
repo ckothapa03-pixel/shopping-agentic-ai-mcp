@@ -1,14 +1,15 @@
 # Agentic AI Shopping Project
 
-This is the first working layer of the project:
+This project includes an AI shopping assistant connected to the local MCP
+product-search server:
 
-User / MCP Client
+Shopper
         |
         v
-MCP Server
+AI Agent (Gemini)
         |
         v
-search_products()
+MCP Server / search_products()
         |
         v
 products_tool.py
@@ -28,7 +29,7 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-## 2. Install dependency
+## 2. Install dependencies
 
 ```powershell
 pip install -r requirements.txt
@@ -103,8 +104,35 @@ and then type normal text into that terminal. MCP uses its communication protoco
 
 For normal testing, use the pinned Inspector command from section 5.
 
-## Current scope
+## Run the AI assistant
 
-This version intentionally does NOT include an LLM or AI API key.
+Create a `.env` file in the project root (it is excluded from version control)
+and add your Gemini API key:
 
-After this MCP/database layer works, the next layer can be an Agent that decides when to call `search_products`.
+```text
+GEMINI_API_KEY=replace-with-your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+Replace the placeholder with your key from Google AI Studio. Never commit the
+real key.
+
+Start the assistant from the project root:
+
+```powershell
+python -m app.agent
+```
+
+The Gemini-powered agent starts the MCP server over stdio, discovers its
+available tools, and lets Gemini call `search_products` as needed. Type `exit`
+to quit. The model can be changed with `GEMINI_MODEL`; the API key must never be
+committed.
+
+## Run tests
+
+```powershell
+python -m unittest test_agent test_database
+```
+
+The MCP server remains independently runnable through the MCP Inspector steps
+above.
