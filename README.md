@@ -127,6 +127,19 @@ available tools, and lets Gemini call `search_products` as needed. Type `exit`
 to quit. The model can be changed with `GEMINI_MODEL`; the API key must never be
 committed.
 
+For a budget search, you can enter the user story without an amount:
+
+```text
+As a shopper, I want to search for products within my budget so that I can find affordable products easily.
+```
+
+The agent asks for your maximum budget in rupees. Enter the amount (for example,
+`1000`) in your next message. Gemini uses the conversation context to call
+`search_products` with that amount as `max_price`. The agent displays product
+rows returned by the catalog with name, price, rating, stock availability,
+brand, and category. These details come from the MCP tool and `shopping.db`, not
+generated product claims.
+
 ## Run tests and print real budget matches
 
 ```powershell
@@ -135,7 +148,9 @@ $python = (Resolve-Path ..\.venv\Scripts\python.exe).Path
 & $python test_database.py
 ```
 
-The first command runs the existing agent tests and User Story #7 tests. The
+The first command runs the agent and User Story #7 tests. Its budget-flow test
+uses a deterministic model tool-call fixture but starts the real MCP server and
+queries the existing `shopping.db`; it does not require a Gemini API key. The
 second prints actual products from `shopping.db` priced at ₹1,000 or less,
 including price, rating, stock, brand, and category.
 
