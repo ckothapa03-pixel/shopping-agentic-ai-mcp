@@ -15,10 +15,11 @@ mcp = FastMCP("Shopping Assistant")
 
 @mcp.tool()
 def search_products(
-    search_term: str,
+    search_term: str = "",
     max_price: float | None = None,
     min_rating: float | None = None,
     in_stock: bool = False,
+    limit: int = 20,
 ) -> list[dict]:
     """
     Search products in the local shopping database.
@@ -28,12 +29,14 @@ def search_products(
         max_price: Optional maximum selling price.
         min_rating: Optional minimum average rating.
         in_stock: If true, only return products with stock greater than zero.
+        limit: Maximum number of products to return.
     """
     return search_products_from_db(
         search_term=search_term,
         max_price=max_price,
         min_rating=min_rating,
         in_stock=in_stock,
+        limit=limit,
     )
 
 

@@ -27,25 +27,28 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         function_call = SimpleNamespace(
+            type="function_call",
+            id="call-1",
             name="search_products",
-            args={"search_term": "wireless mouse"},
+            arguments={"search_term": "wireless mouse"},
+            model_dump=lambda **_: {
+                "type": "function_call",
+                "id": "call-1",
+                "name": "search_products",
+                "arguments": {"search_term": "wireless mouse"},
+            },
         )
         tool_call_response = SimpleNamespace(
-            candidates=[
-                SimpleNamespace(
-                    content=SimpleNamespace(
-                        parts=[SimpleNamespace(function_call=function_call)]
-                    )
-                )
-            ]
+            steps=[function_call],
+            output_text="",
         )
         final_response = SimpleNamespace(
-            candidates=[SimpleNamespace(content=SimpleNamespace(parts=[]))],
-            text="I found a mouse.",
+            steps=[SimpleNamespace(type="model_output")],
+            output_text="I found a mouse.",
         )
         client = SimpleNamespace(
-            models=SimpleNamespace(
-                generate_content=AsyncMock(
+            interactions=SimpleNamespace(
+                create=AsyncMock(
                     side_effect=[tool_call_response, final_response]
                 )
             )
@@ -58,14 +61,31 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
         session.call_tool.assert_awaited_once_with(
             "search_products", {"search_term": "wireless mouse"}
         )
-        first_request = client.models.generate_content.await_args_list[0].kwargs
-        declarations = first_request["config"]["tools"][0]["function_declarations"]
-        self.assertEqual(declarations[0]["name"], "search_products")
-        second_request = client.models.generate_content.await_args_list[1].kwargs
+        first_request = client.interactions.create.await_args_list[0].kwargs
         self.assertEqual(
-            second_request["contents"][-1]["parts"][0]["function_response"]["response"][
-                "result"
-            ],
+            first_request["tools"][0]["name"],
+            "search_products",
+        )
+        self.assertEqual(first_request["store"], False)
+        second_request = client.interactions.create.await_args_list[1].kwargs
+        self.assertEqual(
+            second_request["input"][0]["type"],
+            "user_input",
+        )
+        self.assertEqual(
+            second_request["input"][0]["content"][0]["text"],
+            "Find a wireless mouse",
+        )
+        self.assertEqual(
+            second_request["input"][-1]["type"],
+            "function_result",
+        )
+        self.assertEqual(
+            second_request["input"][-1]["call_id"],
+            "call-1",
+        )
+        self.assertEqual(
+            second_request["input"][-1]["result"],
             '[{"name": "Wireless mouse", "price": 25}]',
         )
 
@@ -80,21 +100,24 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         function_call = SimpleNamespace(
+            type="function_call",
+            id="call-1",
             name="search_products",
-            args={},
+            arguments={},
+            model_dump=lambda **_: {
+                "type": "function_call",
+                "id": "call-1",
+                "name": "search_products",
+                "arguments": {},
+            },
         )
         tool_call_response = SimpleNamespace(
-            candidates=[
-                SimpleNamespace(
-                    content=SimpleNamespace(
-                        parts=[SimpleNamespace(function_call=function_call)]
-                    )
-                )
-            ]
+            steps=[function_call],
+            output_text="",
         )
         client = SimpleNamespace(
-            models=SimpleNamespace(
-                generate_content=AsyncMock(
+            interactions=SimpleNamespace(
+                create=AsyncMock(
                     return_value=tool_call_response
                 )
             )

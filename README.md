@@ -32,7 +32,7 @@ python -m venv venv
 ## 2. Install dependencies
 
 ```powershell
-pip install -r requirements.txt
+python -m pip install --upgrade -r requirements.txt
 ```
 
 ## 3. Put `shopping.db` in the project root
@@ -59,20 +59,17 @@ You should see products from the real `shopping.db`.
 
 ## 5. Test through MCP Inspector
 
-From the project root in PowerShell, make sure `uv` is on `PATH`. In this
-workspace, `uv.exe` is inside the virtual environment one folder above the
-project:
+From the project root in PowerShell, start the Inspector with the existing
+Python environment and MCP 1.30.0 server:
 
 ```powershell
-$env:PATH = (Resolve-Path ..\venv\Scripts).Path + ";" + $env:PATH
-mcp dev --with "mcp[cli]==1.30.0" app/mcp_server.py
+$python = (Resolve-Path ..\.venv\Scripts\python.exe).Path
+npx -y @modelcontextprotocol/inspector $python -m app.mcp_server
 ```
 
-The `--with` option includes the CLI dependencies needed by the Inspector-
-launched server process and pins it to MCP 1.30.0. Do not remove the version
-pin or change it to MCP 2.x.
-
-Open the Inspector URL printed by the command and connect to **Shopping
+This runs the server with the project's existing MCP installation and fetches
+the Inspector through `npx`; it does not change project dependencies or upgrade
+MCP. Open the Inspector URL printed by the command and connect to **Shopping
 Assistant**.
 
 Then find the tool:
@@ -88,9 +85,11 @@ search_term = mouse
 max_price = 1000
 min_rating = 4
 in_stock = true
+limit = 20
 ```
 
-The returned data comes from `shopping.db`.
+The returned data comes from `shopping.db`; `limit` controls the maximum number
+of returned products.
 
 ## Important
 
@@ -102,7 +101,7 @@ python app/mcp_server.py
 
 and then type normal text into that terminal. MCP uses its communication protocol on stdin/stdout.
 
-For normal testing, use the pinned Inspector command from section 5.
+For MCP testing, use the Inspector command from section 5.
 
 ## Run the AI assistant
 
@@ -111,7 +110,7 @@ and add your Gemini API key:
 
 ```text
 GEMINI_API_KEY=replace-with-your-gemini-api-key
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 ```
 
 Replace the placeholder with your key from Google AI Studio. Never commit the
@@ -128,11 +127,17 @@ available tools, and lets Gemini call `search_products` as needed. Type `exit`
 to quit. The model can be changed with `GEMINI_MODEL`; the API key must never be
 committed.
 
-## Run tests
+## Run tests and print real budget matches
 
 ```powershell
-python -m unittest test_agent test_database
+$python = (Resolve-Path ..\.venv\Scripts\python.exe).Path
+& $python -m unittest test_agent test_user_story_7
+& $python test_database.py
 ```
+
+The first command runs the existing agent tests and User Story #7 tests. The
+second prints actual products from `shopping.db` priced at ₹1,000 or less,
+including price, rating, stock, brand, and category.
 
 The MCP server remains independently runnable through the MCP Inspector steps
 above.

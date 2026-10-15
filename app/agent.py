@@ -19,31 +19,22 @@ SYSTEM_PROMPT = (
 
 
 def _gemini_tools(mcp_tools: list[Any]) -> list[dict[str, Any]]:
-    if not mcp_tools:
-        return []
     return [
         {
-            "function_declarations": [
-                {
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "parameters": tool.inputSchema,
-                }
-                for tool in mcp_tools
-            ]
+            "type": "function",
+            "name": tool.name,
+            "description": tool.description or "",
+            "parameters": tool.inputSchema,
         }
+        for tool in mcp_tools
     ]
 
 
-def _tool_calls(response: Any) -> list[Any]:
-    candidates = getattr(response, "candidates", None) or []
-    if not candidates:
-        raise RuntimeError("Gemini returned no response candidates")
-    content = getattr(candidates[0], "content", None)
+def _function_calls(interaction: Any) -> list[Any]:
     return [
-        part.function_call
-        for part in getattr(content, "parts", [])
-        if getattr(part, "function_call", None) is not None
+        step
+        for step in (getattr(interaction, "steps", None) or [])
+        if getattr(step, "type", None) == "function_call"
     ]
 
 
@@ -76,47 +67,50 @@ async def respond(
 
     discovered_tools = await session.list_tools()
     tools = _gemini_tools(discovered_tools.tools)
-    contents: list[Any] = [
-        {"role": "user", "parts": [{"text": user_message}]},
+    history: list[dict[str, Any]] = [
+        {
+            "type": "user_input",
+            "content": [{"type": "text", "text": user_message}],
+        },
     ]
-    config: dict[str, Any] = {"system_instruction": SYSTEM_PROMPT}
-    if tools:
-        config["tools"] = tools
 
     for round_number in range(max_tool_rounds + 1):
-        response = await client.models.generate_content(
+        interaction = await client.interactions.create(
             model=model,
-            contents=contents,
-            config=config,
+            input=history,
+            tools=tools or None,
+            system_instruction=SYSTEM_PROMPT,
+            store=False,
         )
-        function_calls = _tool_calls(response)
+        function_calls = _function_calls(interaction)
         if not function_calls:
-            return getattr(response, "text", None) or ""
+            return getattr(interaction, "output_text", None) or ""
         if round_number == max_tool_rounds:
             raise RuntimeError(
                 f"Assistant exceeded the limit of {max_tool_rounds} tool-call rounds"
             )
 
-        contents.append(response.candidates[0].content)
+        history.extend(
+            step.model_dump(exclude_none=True) for step in interaction.steps
+        )
         function_responses = []
         for function_call in function_calls:
-            arguments = function_call.args
+            arguments = function_call.arguments
             if not isinstance(arguments, dict):
                 raise ValueError(
                     f"Model arguments for {function_call.name} must be an object"
                 )
 
             result = await session.call_tool(function_call.name, arguments)
-            function_responses.append(
-                {
-                    "function_response": {
-                        "name": function_call.name,
-                        "response": {"result": _tool_result_text(result)},
-                    }
-                }
-            )
+            function_response = {
+                "type": "function_result",
+                "call_id": function_call.id,
+                "name": function_call.name,
+                "result": _tool_result_text(result),
+            }
+            function_responses.append(function_response)
 
-        contents.append({"role": "user", "parts": function_responses})
+        history.extend(function_responses)
 
     raise RuntimeError("Assistant stopped without producing a response")
 
@@ -130,7 +124,7 @@ async def chat() -> None:
             f"{PROJECT_ROOT / '.env'}."
         )
 
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     server_parameters = StdioServerParameters(
         command=sys.executable,
         args=["-m", "app.mcp_server"],
@@ -153,12 +147,16 @@ async def chat() -> None:
                     if not user_message:
                         continue
 
-                    answer = await respond(
-                        session=session,
-                        client=client,
-                        user_message=user_message,
-                        model=model,
-                    )
+                    try:
+                        answer = await respond(
+                            session=session,
+                            client=client,
+                            user_message=user_message,
+                            model=model,
+                        )
+                    except Exception as error:
+                        print(f"\nAssistant error: {error}")
+                        continue
                     print(f"\nAssistant: {answer}")
 
 
