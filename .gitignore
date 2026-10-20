@@ -14,6 +14,7 @@ __pycache__/
 
 # Local database containing shopping records
 shopping.db
+accounts.sqlite3
 
 # Editor and operating system files
 .vscode/

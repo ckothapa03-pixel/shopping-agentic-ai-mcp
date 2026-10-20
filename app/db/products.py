@@ -1,3 +1,5 @@
+from contextlib import closing
+
 from app.db.database import get_connection
 
 
@@ -70,7 +72,7 @@ def find_products(
     """
     params.append(limit)
 
-    with get_connection() as connection:
+    with closing(get_connection()) as connection:
         rows = connection.execute(query, params).fetchall()
 
     return [dict(row) for row in rows]

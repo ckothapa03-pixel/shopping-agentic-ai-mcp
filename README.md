@@ -140,19 +140,45 @@ rows returned by the catalog with name, price, rating, stock availability,
 brand, and category. These details come from the MCP tool and `shopping.db`, not
 generated product claims.
 
+## Run the shopping website
+
+Install the project dependencies in the active virtual environment and start
+Streamlit from the project root:
+
+```powershell
+python -m pip install -r requirements.txt
+streamlit run app/web_app.py
+```
+
+The **Shop** section searches the existing `shopping.db` catalog and supports
+maximum-price filtering, product details, and a session-only cart. The cart
+supports quantity changes, item removal, stock validation, and recalculated
+totals. The **AI Chatbot** section reuses the Gemini agent and MCP
+`search_products` tool; it requires a valid `GEMINI_API_KEY` in `.env` or the
+environment. The website never reads or displays customer or order records.
+The login screen supports local account registration and verified sign-in;
+account credentials are stored as salted password hashes in the ignored
+`accounts.sqlite3`, separate from the existing shopping database. Existing
+seeded shopper records do not have passwords and cannot sign in until an
+account is registered through the app. Guest browsing is available without an
+account. This is a local demo authentication flow, not production identity
+management; it does not include password reset or login rate limiting. The
+existing command-line agent remains available with `python -m app.agent`.
+
 ## Run tests and print real budget matches
 
 ```powershell
 $python = (Resolve-Path ..\.venv\Scripts\python.exe).Path
-& $python -m unittest test_agent test_user_story_7
+& $python -m unittest test_agent test_user_story_7 test_cart test_web_app test_authentication test_web_navigation
 & $python test_database.py
 ```
 
-The first command runs the agent and User Story #7 tests. Its budget-flow test
-uses a deterministic model tool-call fixture but starts the real MCP server and
-queries the existing `shopping.db`; it does not require a Gemini API key. The
-second prints actual products from `shopping.db` priced at ₹1,000 or less,
-including price, rating, stock, brand, and category.
+The unittest command includes the original agent and User Story #7 tests plus
+cart, authentication, login/guest navigation, and grounded-chat tests. The
+agent budget-flow test uses a deterministic model tool-call fixture but starts
+the real MCP server and queries the existing `shopping.db`; it does not require
+a Gemini API key. `test_database.py` prints actual products priced at ₹1,000 or
+less, including price, rating, stock, brand, and category.
 
 The MCP server remains independently runnable through the MCP Inspector steps
 above.
