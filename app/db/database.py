@@ -11,6 +11,7 @@ def get_connection() -> sqlite3.Connection:
     if not DB_PATH.exists():
         raise FileNotFoundError(f"Database not found: {DB_PATH}")
 
-    connection = sqlite3.connect(DB_PATH)
+    database_uri = f"{DB_PATH.resolve().as_uri()}?mode=ro"
+    connection = sqlite3.connect(database_uri, uri=True)
     connection.row_factory = sqlite3.Row
     return connection

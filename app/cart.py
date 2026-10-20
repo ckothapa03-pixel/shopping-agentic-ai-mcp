@@ -1,4 +1,6 @@
 from collections.abc import Mapping
+import math
+from decimal import Decimal
 from typing import Any
 
 
@@ -57,7 +59,7 @@ def cart_total(
     cart: Mapping[int, int],
     products_by_id: Mapping[int, Mapping[str, Any]],
 ) -> float:
-    total = 0.0
+    total = Decimal("0")
     for product_id, quantity in cart.items():
         product = products_by_id.get(product_id)
         if product is None:
@@ -66,9 +68,20 @@ def cart_total(
         if (
             isinstance(price, bool)
             or not isinstance(price, (int, float))
+            or not math.isfinite(price)
             or price < 0
         ):
             raise ValueError(f"Product {product_id} has an invalid price")
         _validate_quantity(quantity, product["stock"])
-        total += price * quantity
-    return total
+        total += Decimal(str(price)) * quantity
+    return float(total)
+
+
+def validate_checkout(
+    cart: Mapping[int, int],
+    products_by_id: Mapping[int, Mapping[str, Any]],
+) -> float:
+    """Recalculate a non-empty cart against fresh products before demo checkout."""
+    if not cart:
+        raise ValueError("Your cart is empty.")
+    return cart_total(cart, products_by_id)

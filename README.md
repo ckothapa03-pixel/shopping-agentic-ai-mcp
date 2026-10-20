@@ -25,15 +25,18 @@ shopping.db (SQLite)
 Windows PowerShell:
 
 ```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
 ## 2. Install dependencies
 
 ```powershell
-python -m pip install --upgrade -r requirements.txt
+python -m pip install -r requirements.txt
 ```
+
+Python 3.10 or newer is required. The project keeps its existing
+`mcp[cli]==1.30.0` pin.
 
 ## 3. Put `shopping.db` in the project root
 
@@ -59,18 +62,17 @@ You should see products from the real `shopping.db`.
 
 ## 5. Test through MCP Inspector
 
-From the project root in PowerShell, start the Inspector with the existing
-Python environment and MCP 1.30.0 server:
+From the project root in PowerShell, start the Inspector with the project
+virtual environment:
 
 ```powershell
-$python = (Resolve-Path ..\.venv\Scripts\python.exe).Path
+$python = (Resolve-Path .\.venv\Scripts\python.exe).Path
 npx -y @modelcontextprotocol/inspector $python -m app.mcp_server
 ```
 
-This runs the server with the project's existing MCP installation and fetches
-the Inspector through `npx`; it does not change project dependencies or upgrade
-MCP. Open the Inspector URL printed by the command and connect to **Shopping
-Assistant**.
+The Inspector is fetched through `npx`; this does not change project
+dependencies or upgrade MCP. Open the Inspector URL printed by the command and
+connect to **Shopping Assistant**.
 
 Then find the tool:
 
@@ -142,43 +144,61 @@ generated product claims.
 
 ## Run the shopping website
 
-Install the project dependencies in the active virtual environment and start
-Streamlit from the project root:
+From the project root, activate the virtual environment and start Streamlit:
 
 ```powershell
-python -m pip install -r requirements.txt
-streamlit run app/web_app.py
+Set-Location "C:\path\to\agentic-ai-project"
+.\.venv\Scripts\Activate.ps1
+python -m streamlit run app\web_app.py
 ```
 
-The **Shop** section searches the existing `shopping.db` catalog and supports
-maximum-price filtering, product details, and a session-only cart. The cart
-supports quantity changes, item removal, stock validation, and recalculated
-totals. The **AI Chatbot** section reuses the Gemini agent and MCP
-`search_products` tool; it requires a valid `GEMINI_API_KEY` in `.env` or the
-environment. The website never reads or displays customer or order records.
-The login screen supports local account registration and verified sign-in;
-account credentials are stored as salted password hashes in the ignored
-`accounts.sqlite3`, separate from the existing shopping database. Existing
-seeded shopper records do not have passwords and cannot sign in until an
-account is registered through the app. Guest browsing is available without an
-account. This is a local demo authentication flow, not production identity
-management; it does not include password reset or login rate limiting. The
-existing command-line agent remains available with `python -m app.agent`.
+Replace the example path with the current project folder. The first screen is
+login; select **Continue as Guest** to browse without registering. Search,
+categories, brands, price bounds, customer ratings, stock, sorting, and grid or
+list layouts use the real catalog rows in `shopping.db`. The cart and saved
+products are available from the top-right controls. The floating Shopwise AI
+button opens the Gemini/MCP product-search assistant.
 
-## Run tests and print real budget matches
+Account registration stores salted password hashes in the ignored
+`accounts.sqlite3`, separate from `shopping.db`. Existing shopper rows in the
+catalog database have no password credentials and cannot be used to sign in.
+This local demo flow is not production identity management; it has no password
+reset or login rate limiting. The website does not read or display customer or
+order records from `shopping.db`.
+
+### Demonstration behavior and limitations
+
+- Cart and wishlist data are temporary to the current browser session for
+  guests and signed-in demo accounts. The app does not read or write the
+  database `cart_items` table.
+- **Demo checkout** rechecks current product availability, stock, and price,
+  then calculates totals from catalog data. It does not save an order or charge
+  a payment method. Real order creation is not available because the demo
+  account store is separate from the existing users, address, and order data.
+- `shopping.db` has no image field and no product image assets are supplied;
+  product cards use a neutral image-unavailable placeholder.
+- Orders are not shown in the navigation because account-to-order ownership is
+  not integrated.
+- AI chat requires a usable Gemini key and network access. It reuses the
+  existing Gemini agent and MCP `search_products` path; failures are reported
+  without claiming an unverified search succeeded.
+- No database schema migration or record changes are required.
+
+Keep `.env` private and do not use real account credentials for this local
+demonstration. The command-line agent remains available with
+`python -m app.agent`.
+
+## Run tests
 
 ```powershell
-$python = (Resolve-Path ..\.venv\Scripts\python.exe).Path
-& $python -m unittest test_agent test_user_story_7 test_cart test_web_app test_authentication test_web_navigation
-& $python test_database.py
+python -m unittest test_agent test_user_story_7 test_catalog test_cart test_web_app test_authentication test_web_navigation
 ```
 
-The unittest command includes the original agent and User Story #7 tests plus
-cart, authentication, login/guest navigation, and grounded-chat tests. The
-agent budget-flow test uses a deterministic model tool-call fixture but starts
-the real MCP server and queries the existing `shopping.db`; it does not require
-a Gemini API key. `test_database.py` prints actual products priced at ₹1,000 or
-less, including price, rating, stock, brand, and category.
+This runs the agent, catalog, cart/checkout, authentication, grounded-chat,
+and login/guest/navigation tests. The agent budget-flow test uses a
+deterministic model fixture while starting the real MCP server and querying
+`shopping.db`; it does not require a Gemini API key. `test_database.py` is an
+optional demonstration script that prints product data, not an automated test.
 
 The MCP server remains independently runnable through the MCP Inspector steps
 above.

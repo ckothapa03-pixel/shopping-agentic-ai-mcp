@@ -68,10 +68,14 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         )
         add_button.click().run()
         self.assertEqual(len(self.app.session_state["cart"]), 1)
+        self.assertIn(
+            "Cart",
+            [button.label for button in self.app.button],
+        )
         self.assertTrue(
             any("Cart total:" in element.value for element in self.app.markdown)
         )
-        self._button("Return to login").click().run()
+        self._button("Login").click().run()
 
         self._assert_no_shop()
         self.assertEqual(
@@ -132,6 +136,85 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         )
         self._button("Log out").click().run()
         self._assert_no_shop()
+
+    def test_wishlist_updates_and_is_session_only(self) -> None:
+        self._button("Continue as Guest").click().run()
+
+        next(
+            button for button in self.app.button if button.label == "Save"
+        ).click().run()
+
+        self.assertEqual(len(self.app.session_state["wishlist"]), 1)
+        self.assertIn(
+            "Saved",
+            [button.label for button in self.app.button],
+        )
+        self._button("Saved").click().run()
+
+        self.assertIn(
+            "Your wishlist",
+            [header.value for header in self.app.header],
+        )
+        self.assertTrue(
+            any(
+                "temporary and stored only in this browser session" in element.value
+                for element in self.app.info
+            )
+        )
+        next(
+            button
+            for button in self.app.button
+            if button.key and button.key.startswith("wishlist-product-")
+        ).click().run()
+        self.assertFalse(self.app.session_state["wishlist"])
+
+    def test_demo_checkout_rechecks_cart_without_persisting_an_order(self) -> None:
+        self._button("Continue as Guest").click().run()
+        next(
+            button for button in self.app.button if button.label == "Add to cart"
+        ).click().run()
+        self._button("Cart").click().run()
+        next(
+            button for button in self.app.button if button.label == "Checkout"
+        ).click().run()
+
+        self.assertIn(
+            "Demo checkout",
+            [header.value for header in self.app.header],
+        )
+        self.assertTrue(
+            any("no order is saved" in element.value for element in self.app.warning)
+        )
+        next(
+            button
+            for button in self.app.button
+            if button.label == "Complete demo checkout"
+        ).click().run()
+
+        self.assertTrue(
+            any(
+                "No order was placed or stored" in element.value
+                for element in self.app.success
+            )
+        )
+        self.assertEqual(len(self.app.session_state["cart"]), 1)
+
+    def test_header_search_and_clear_filters_restore_the_catalog(self) -> None:
+        self._button("Continue as Guest").click().run()
+        self._text_input("catalog_search_input").set_value(
+            "__no_shopwise_match__"
+        )
+        self._submit("Search").click().run()
+
+        self.assertTrue(
+            any("No products match" in element.value for element in self.app.info)
+        )
+        self._button("Clear all filters").click().run()
+
+        self.assertEqual(self.app.session_state["catalog_search_query"], "")
+        self.assertFalse(
+            any("No products match" in element.value for element in self.app.info)
+        )
 
 
 if __name__ == "__main__":

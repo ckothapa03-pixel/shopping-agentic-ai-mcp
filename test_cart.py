@@ -1,6 +1,12 @@
 import unittest
 
-from app.cart import add_to_cart, cart_total, remove_from_cart, update_cart_quantity
+from app.cart import (
+    add_to_cart,
+    cart_total,
+    remove_from_cart,
+    update_cart_quantity,
+    validate_checkout,
+)
 
 
 class ShoppingCartTests(unittest.TestCase):
@@ -44,6 +50,21 @@ class ShoppingCartTests(unittest.TestCase):
             update_cart_quantity({}, self.product, 1)
         with self.assertRaisesRegex(ValueError, "unavailable"):
             cart_total({7: 1}, {})
+
+    def test_currency_totals_are_calculated_without_binary_float_drift(self) -> None:
+        products = {
+            7: {"id": 7, "price": 0.1, "stock": 5},
+            8: {"id": 8, "price": 0.2, "stock": 5},
+        }
+
+        self.assertEqual(cart_total({7: 3, 8: 1}, products), 0.5)
+
+    def test_checkout_requires_a_non_empty_cart_and_current_valid_stock(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cart is empty"):
+            validate_checkout({}, {})
+        self.assertEqual(validate_checkout({7: 2}, {7: self.product}), 251.0)
+        with self.assertRaisesRegex(ValueError, "available stock"):
+            validate_checkout({7: 5}, {7: self.product})
 
 
 if __name__ == "__main__":
