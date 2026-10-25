@@ -1,0 +1,101 @@
+
+        <style>
+        .stApp,
+        .stApp [data-testid="stAppViewContainer"],
+        .stApp [data-testid="stHeader"] {
+            background: #f1f6fa;
+            color: #14283c;
+        }
+        .stApp [data-testid="stMainBlockContainer"] {
+            padding-top: 0.75rem;
+            padding-bottom: 1rem;
+        }
+        .stApp [data-testid="stVerticalBlock"] {
+            gap: 0.65rem;
+        }
+        .stApp .st-key-login-card {
+            background: #ffffff;
+            border: 1px solid #d7e2eb;
+            border-radius: 18px;
+            box-shadow: 0 14px 38px rgba(20, 40, 60, 0.09);
+            padding: 1.15rem 1.35rem;
+        }
+        .login-intro {
+            text-align: center;
+            color: #334a60;
+            margin: 0 0 0.35rem;
+        }
+        .login-intro h1 {
+            color: #102a43;
+            font-size: 1.45rem;
+            line-height: 1.2;
+            margin: 0 0 0.4rem;
+        }
+        .login-intro p,
+        .stApp [data-testid="stMarkdownContainer"] p,
+        .stApp [data-testid="stWidgetLabel"] p,
+        .stApp label {
+            color: #334a60;
+        }
+        .stApp [data-testid="stCaptionContainer"] {
+            color: #52677c;
+            text-align: center;
+        }
+        .stApp [data-testid="stTextInputRootElement"] {
+            background: #ffffff;
+            border: 1px solid #bdcbd8;
+        }
+        .stApp [data-testid="stTextInputField"] {
+            background: #ffffff;
+            color: #14283c;
+        }
+        .stApp [data-testid="stTextInputRootElement"]:focus-within {
+            border-color: #0f766e;
+            box-shadow: 0 0 0 1px #0f766e;
+        }
+        .stApp [data-testid="stBaseButton-primaryFormSubmit"] {
+            background: #0f766e;
+            border-color: #0f766e;
+            border-radius: 10px;
+            color: #ffffff;
+            min-height: 2.8rem;
+        }
+        .stApp [data-testid="stBaseButton-primaryFormSubmit"] p {
+            color: #ffffff;
+        }
+        .stApp [data-testid="stBaseButton-primaryFormSubmit"]:hover {
+            background: #115e59;
+            border-color: #115e59;
+            color: #ffffff;
+        }
+        .stApp [data-testid="stBaseButton-secondary"] {
+            background: #f4f8fa;
+            border: 1px solid #c7d5df;
+            border-radius: 10px;
+            color: #173b4f;
+            min-height: 2.55rem;
+        }
+        .stApp [data-testid="stBaseButton-secondary"] p {
+            color: #173b4f;
+        }
+        .stApp [data-testid="stBaseButton-secondary"]:hover {
+            background: #e5f0f1;
+            border-color: #7aa9aa;
+            color: #102f3e;
+        }
+        .stApp [data-testid="stBaseButton-secondary"][kind="secondary"] {
+            font-weight: 600;
+        }
+        .stApp [data-testid="stMainBlockContainer"] hr {
+            border-color: #d7e2eb;
+            margin: 0.35rem 0;
+        }
+        @media (max-width: 640px) {
+            .stApp .st-key-login-card {
+                padding: 0.9rem;
+            }
+            .login-intro h1 {
+                font-size: 1.35rem;
+            }
+        }
+        </style>

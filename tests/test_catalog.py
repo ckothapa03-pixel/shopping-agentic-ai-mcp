@@ -1,6 +1,7 @@
 import unittest
 
 from app.db.products import (
+    count_products,
     find_products,
     get_catalog_facets,
     get_products_by_ids,
@@ -110,6 +111,29 @@ class ProductCatalogTests(unittest.TestCase):
             find_products(search_term="__no_shopwise_match__", limit=1000),
             [],
         )
+
+    def test_count_and_offset_pages_match_filtered_sorted_results(self) -> None:
+        category = self.catalog[0]["category"]
+        expected = find_products(category=category, sort_by="name_ascending", limit=1000)
+        self.assertEqual(count_products(category=category), len(expected))
+
+        paged = []
+        for offset in range(0, len(expected), 15):
+            paged.extend(
+                find_products(
+                    category=category,
+                    sort_by="name_ascending",
+                    limit=15,
+                    offset=offset,
+                )
+            )
+
+        self.assertEqual([row["id"] for row in paged], [row["id"] for row in expected])
+        self.assertEqual(len({row["id"] for row in paged}), len(expected))
+
+    def test_offset_must_be_a_non_negative_integer(self) -> None:
+        with self.assertRaisesRegex(ValueError, "offset"):
+            find_products(offset=-1)
 
 
 if __name__ == "__main__":

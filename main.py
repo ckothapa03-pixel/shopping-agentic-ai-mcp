@@ -1,4 +1,4 @@
-from app.mcp_server import mcp
+from app.mcp.mcp_server import mcp
 
 if __name__ == "__main__":
     mcp.run()

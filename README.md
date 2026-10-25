@@ -47,18 +47,33 @@ agentic-ai-project/
 ├── app/
 ├── shopping.db
 ├── main.py
-├── test_database.py
+├── examples/
+│   └── demo_product_search.py
+├── tests/
+│   └── ...
 ├── requirements.txt
 └── .env
 ```
 
+## Prepare the accounts database
+
+Before launching the Streamlit website, run this command from the project root:
+
+```powershell
+python scripts\setup_accounts_db.py
+```
+
+This prepares the accounts database and table needed for user registration
+and login.
+
 ## 4. Test the database first
 
 ```powershell
-python test_database.py
+python examples\demo_product_search.py
 ```
 
-You should see products from the real `shopping.db`.
+You should see products from the real `shopping.db`. This is a demonstration
+script, not an automated test.
 
 ## 5. Test through MCP Inspector
 
@@ -66,8 +81,8 @@ From the project root in PowerShell, start the Inspector with the project
 virtual environment:
 
 ```powershell
-$python = (Resolve-Path .\.venv\Scripts\python.exe).Path
-npx -y @modelcontextprotocol/inspector $python -m app.mcp_server
+$python = (Resolve-Path ..\.venv\Scripts\python.exe).Path
+npx -y @modelcontextprotocol/inspector $python -m app.mcp.mcp_server
 ```
 
 The Inspector is fetched through `npx`; this does not change project
@@ -98,7 +113,7 @@ of returned products.
 Do not run:
 
 ```powershell
-python app/mcp_server.py
+python -m app.mcp.mcp_server
 ```
 
 and then type normal text into that terminal. MCP uses its communication protocol on stdin/stdout.
@@ -121,7 +136,7 @@ real key.
 Start the assistant from the project root:
 
 ```powershell
-python -m app.agent
+& ..\.venv\Scripts\python.exe -m app.agent.agent_cli
 ```
 
 The Gemini-powered agent starts the MCP server over stdio, discovers its
@@ -144,12 +159,11 @@ generated product claims.
 
 ## Run the shopping website
 
-From the project root, activate the virtual environment and start Streamlit:
+From the project root, use the existing virtual environment in the parent
+folder to start Streamlit:
 
 ```powershell
-Set-Location "C:\path\to\agentic-ai-project"
-.\.venv\Scripts\Activate.ps1
-python -m streamlit run app\web_app.py
+& ..\.venv\Scripts\python.exe -m streamlit run app\ui\web_app.py
 ```
 
 Replace the example path with the current project folder. The first screen is
@@ -185,20 +199,21 @@ order records from `shopping.db`.
 - No database schema migration or record changes are required.
 
 Keep `.env` private and do not use real account credentials for this local
-demonstration. The command-line agent remains available with
-`python -m app.agent`.
+demonstration. The command-line agent can be started with the command shown
+above from the project root.
 
 ## Run tests
 
 ```powershell
-python -m unittest test_agent test_user_story_7 test_catalog test_cart test_web_app test_authentication test_web_navigation
+python -m unittest discover -s tests -v
 ```
 
 This runs the agent, catalog, cart/checkout, authentication, grounded-chat,
 and login/guest/navigation tests. The agent budget-flow test uses a
 deterministic model fixture while starting the real MCP server and querying
-`shopping.db`; it does not require a Gemini API key. `test_database.py` is an
-optional demonstration script that prints product data, not an automated test.
+`shopping.db`; it does not require a Gemini API key. `examples/demo_product_search.py`
+is an optional demonstration script that prints product data, not an automated
+test.
 
 The MCP server remains independently runnable through the MCP Inspector steps
 above.

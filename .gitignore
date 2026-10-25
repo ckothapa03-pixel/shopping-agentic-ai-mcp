@@ -17,6 +17,9 @@ __pycache__/
 shopping.db
 accounts.sqlite3
 
+# Generated test output
+test-results.txt
+
 # Editor and operating system files
 .vscode/
 .DS_Store

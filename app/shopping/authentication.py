@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, TypedDict
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PASSWORD_ITERATIONS = 600_000
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -27,21 +27,13 @@ def _database_path(db_path: Path | str | None) -> Path:
 
 
 def _connect(db_path: Path | str | None) -> sqlite3.Connection:
-    path = _database_path(db_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS accounts (
-            email TEXT PRIMARY KEY COLLATE NOCASE,
-            full_name TEXT NOT NULL,
-            password_salt BLOB NOT NULL,
-            password_hash BLOB NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    path = _database_path(db_path).resolve()
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Account database not found: {path}. Run scripts/setup_accounts_db.py first."
         )
-        """
-    )
+    connection = sqlite3.connect(f"{path.as_uri()}?mode=rw", uri=True)
+    connection.row_factory = sqlite3.Row
     return connection
 
 

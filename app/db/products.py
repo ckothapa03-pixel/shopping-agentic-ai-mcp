@@ -5,6 +5,11 @@ from typing import Any
 from app.db.database import get_connection
 
 
+_PRODUCT_FROM = """
+    FROM products p
+    LEFT JOIN categories c ON c.id = p.category_id
+    LEFT JOIN brands b ON b.id = p.brand_id
+"""
 _PRODUCT_SELECT = """
     SELECT
         p.id,
@@ -18,15 +23,12 @@ _PRODUCT_SELECT = """
         p.rating_count,
         c.name AS category,
         b.name AS brand
-    FROM products p
-    LEFT JOIN categories c ON c.id = p.category_id
-    LEFT JOIN brands b ON b.id = p.brand_id
-"""
+""" + _PRODUCT_FROM
 _SORT_ORDERS = {
-    "relevance": "p.rating_avg DESC, p.rating_count DESC, p.price ASC",
+    "relevance": "p.rating_avg DESC, p.rating_count DESC, p.price ASC, p.id ASC",
     "price_low_to_high": "p.price ASC, p.id ASC",
     "price_high_to_low": "p.price DESC, p.id ASC",
-    "highest_rated": "p.rating_avg DESC, p.rating_count DESC, p.price ASC",
+    "highest_rated": "p.rating_avg DESC, p.rating_count DESC, p.price ASC, p.id ASC",
     "name_ascending": "p.name COLLATE NOCASE ASC, p.id ASC",
 }
 
@@ -38,36 +40,21 @@ def _is_finite_number(value: int | float) -> bool:
         return False
 
 
-def find_products(
-    search_term: str = "",
-    max_price: float | None = None,
-    min_rating: float | None = None,
-    in_stock: bool = False,
-    limit: int = 20,
-    min_price: float | None = None,
-    category: str | None = None,
-    brand: str | None = None,
-    sort_by: str = "relevance",
-) -> list[dict]:
-    """
-    Search products in the local shopping database.
-
-    Search checks product name and description.
-    Optional filters:
-      - max_price
-      - min_rating
-      - in_stock
-    """
+def _product_filter_clause(
+    search_term: str,
+    max_price: float | None,
+    min_rating: float | None,
+    in_stock: bool,
+    min_price: float | None,
+    category: str | None,
+    brand: str | None,
+) -> tuple[str, list[Any]]:
     if search_term is None:
         search_term = ""
     if not isinstance(search_term, str):
         raise ValueError("search_term must be a string")
     search_term = search_term.strip()
 
-    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
-        raise ValueError("limit must be a positive integer")
-    if not isinstance(sort_by, str) or sort_by not in _SORT_ORDERS:
-        raise ValueError("Unsupported product sort order")
     for label, value in (("min_price", min_price), ("max_price", max_price)):
         if value is not None and (
             isinstance(value, bool)
@@ -91,12 +78,10 @@ def find_products(
         if value is not None and (not isinstance(value, str) or not value.strip()):
             raise ValueError(f"{label} must be a non-empty string")
 
-    query = _PRODUCT_SELECT + " WHERE 1 = 1"
-
-    params = []
-
+    clause = " WHERE 1 = 1"
+    params: list[Any] = []
     if search_term:
-        query += """
+        clause += """
             AND (
                 LOWER(p.name) LIKE LOWER(?)
                 OR LOWER(p.description) LIKE LOWER(?)
@@ -106,38 +91,108 @@ def find_products(
             )
         """
         term = f"%{search_term}%"
-        params.extend([term, term, term, term, term])
-
+        params.extend([term] * 5)
     if max_price is not None:
-        query += " AND p.price <= ?"
+        clause += " AND p.price <= ?"
         params.append(max_price)
-
     if min_price is not None:
-        query += " AND p.price >= ?"
+        clause += " AND p.price >= ?"
         params.append(min_price)
-
     if min_rating is not None:
-        query += " AND p.rating_avg >= ?"
+        clause += " AND p.rating_avg >= ?"
         params.append(min_rating)
-
     if in_stock:
-        query += " AND p.stock > 0"
-
+        clause += " AND p.stock > 0"
     if category is not None:
-        query += " AND c.name = ?"
+        clause += " AND c.name = ?"
         params.append(category.strip())
-
     if brand is not None:
-        query += " AND b.name = ?"
+        clause += " AND b.name = ?"
         params.append(brand.strip())
+    return clause, params
 
-    query += f" ORDER BY {_SORT_ORDERS[sort_by]} LIMIT ?"
-    params.append(limit)
+
+def find_products(
+    search_term: str = "",
+    max_price: float | None = None,
+    min_rating: float | None = None,
+    in_stock: bool = False,
+    limit: int = 20,
+    min_price: float | None = None,
+    category: str | None = None,
+    brand: str | None = None,
+    sort_by: str = "relevance",
+    offset: int = 0,
+) -> list[dict]:
+    """
+    Search products in the local shopping database.
+
+    Search checks product name and description.
+    Optional filters:
+      - max_price
+      - min_rating
+      - in_stock
+    """
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise ValueError("limit must be a positive integer")
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("offset must be a non-negative integer")
+    if not isinstance(sort_by, str) or sort_by not in _SORT_ORDERS:
+        raise ValueError("Unsupported product sort order")
+    filter_clause, params = _product_filter_clause(
+        search_term,
+        max_price,
+        min_rating,
+        in_stock,
+        min_price,
+        category,
+        brand,
+    )
+
+    query = _PRODUCT_SELECT + filter_clause
+    query += f" ORDER BY {_SORT_ORDERS[sort_by]} LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
 
     with closing(get_connection()) as connection:
         rows = connection.execute(query, params).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def count_products(
+    search_term: str = "",
+    max_price: float | None = None,
+    min_rating: float | None = None,
+    in_stock: bool = False,
+    min_price: float | None = None,
+    category: str | None = None,
+    brand: str | None = None,
+) -> int:
+    """Count catalog matches using the same filters as ``find_products``."""
+    filter_clause, params = _product_filter_clause(
+        search_term,
+        max_price,
+        min_rating,
+        in_stock,
+        min_price,
+        category,
+        brand,
+    )
+    query = "SELECT COUNT(*) " + _PRODUCT_FROM + filter_clause
+    with closing(get_connection()) as connection:
+        row = connection.execute(query, params).fetchone()
+    return int(row[0])
+
+
+def get_catalog_price_bounds() -> tuple[float, float] | None:
+    """Return the lowest and highest product prices without loading product rows."""
+    with closing(get_connection()) as connection:
+        row = connection.execute(
+            "SELECT MIN(price), MAX(price) FROM products"
+        ).fetchone()
+    if row[0] is None or row[1] is None:
+        return None
+    return float(row[0]), float(row[1])
 
 
 def get_catalog_facets() -> dict[str, list[str]]:

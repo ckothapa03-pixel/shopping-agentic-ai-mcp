@@ -1,6 +1,6 @@
 import unittest
 
-from app.cart import (
+from app.shopping.cart import (
     add_to_cart,
     cart_total,
     remove_from_cart,
