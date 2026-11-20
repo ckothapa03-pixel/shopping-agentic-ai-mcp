@@ -6,6 +6,7 @@ import streamlit as st
 
 from app.shopping.cart import add_to_cart
 from app.db.products import get_products_by_ids
+from app.db.user_data import set_cart_quantity, set_wishlist as persist_wishlist
 
 __all__ = ["_render_product"]
 
@@ -141,6 +142,17 @@ def _render_product(
                     st.session_state.cart,
                     current_products[0],
                 )
+                if st.session_state.access_mode == "authenticated":
+                    persist_user_id = st.session_state.get("authenticated_user_id")
+                    if persist_user_id:
+                            try:
+                                set_cart_quantity(
+                                    persist_user_id,
+                                    product_id,
+                                    st.session_state.cart[product_id],
+                                )
+                            except (PermissionError, ValueError, OSError, sqlite3.Error):
+                                pass
                 st.session_state.demo_checkout_complete = False
                 st.toast(f"Added {product['name']} to your cart.")
                 st.rerun()
@@ -151,8 +163,17 @@ def _render_product(
         if wishlist_button:
             if is_saved:
                 st.session_state.wishlist.discard(product_id)
+                saved = False
                 st.toast("Removed from your session wishlist.")
             else:
                 st.session_state.wishlist.add(product_id)
+                saved = True
                 st.toast("Added to your session wishlist.")
+            if st.session_state.access_mode == "authenticated":
+                persist_user_id = st.session_state.get("authenticated_user_id")
+                if persist_user_id:
+                    try:
+                        persist_wishlist(persist_user_id, product_id, saved)
+                    except (PermissionError, ValueError, OSError, sqlite3.Error):
+                        pass
             st.rerun()

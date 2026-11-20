@@ -52,43 +52,93 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
         client = SimpleNamespace(
             interactions=SimpleNamespace(create=AsyncMock(return_value=interaction))
         )
+        session = SimpleNamespace(
+            list_tools=AsyncMock(return_value=SimpleNamespace(tools=[])),
+        )
         with patch.dict(os.environ, {"GEMINI_TIMEOUT_SECONDS": "17"}):
-            answer = await respond(None, client, "Hello", "test-model")
+            answer = await respond(session, client, "Search for a mouse", "test-model")
 
         self.assertEqual(answer, "Hello!")
         self.assertEqual(client.interactions.create.await_args.kwargs["timeout"], 17)
 
-    async def test_greeting_is_answered_by_gemini_without_product_tool_call(self) -> None:
+    async def test_system_prompt_restricts_scope_to_shopping(self) -> None:
+        interaction = SimpleNamespace(steps=[], output_text="Hello!")
+        client = SimpleNamespace(
+            interactions=SimpleNamespace(create=AsyncMock(return_value=interaction))
+        )
         session = SimpleNamespace(
             list_tools=AsyncMock(return_value=SimpleNamespace(tools=[])),
+        )
+
+        await respond(session, client, "Hi", "test-model")
+
+        system_instruction = client.interactions.create.await_args.kwargs[
+            "system_instruction"
+        ]
+        self.assertIn("Shopwise", system_instruction)
+        self.assertIn("out of scope", system_instruction.casefold())
+        self.assertIn("cover letter", system_instruction.casefold())
+        self.assertIn("decline", system_instruction.casefold())
+        self.assertIn("categories", system_instruction.casefold())
+        self.assertIn("redirect", system_instruction.casefold())
+
+    async def test_standalone_greetings_use_gemini_without_tool_calls(self) -> None:
+        search_tool = SimpleNamespace(
+            name="search_products",
+            description="Search the product catalog",
+            inputSchema={"type": "object", "properties": {}},
+        )
+        session = SimpleNamespace(
+            list_tools=AsyncMock(
+                return_value=SimpleNamespace(tools=[search_tool])
+            ),
             call_tool=AsyncMock(),
         )
+        loader = _TrackedLoader()
         interaction = SimpleNamespace(
-            steps=[SimpleNamespace(type="model_output")],
-            output_text="Hello! How can I help you today?",
+            steps=[],
+            output_text="Gemini-generated greeting",
         )
         client = SimpleNamespace(
             interactions=SimpleNamespace(create=AsyncMock(return_value=interaction))
         )
-        loader = _TrackedLoader()
 
-        answer = await respond(
-            session,
-            client,
-            "Hii",
-            "test-model",
-            product_search_loader=loader,
-        )
+        for greeting in ("Hi", "Hello", "Hii", "Hey there!", "Good morning."):
+            history: list[dict[str, object]] = []
+            answer = await respond(
+                session,
+                client,
+                greeting,
+                "test-model",
+                conversation_history=history,
+                product_search_loader=loader,
+            )
+            self.assertEqual(answer, "Gemini-generated greeting")
+            self.assertEqual(
+                client.interactions.create.await_args.kwargs["input"][-1]
+                ["content"][0]["text"],
+                greeting,
+            )
 
-        self.assertEqual(answer, "Hello! How can I help you today?")
-        session.list_tools.assert_not_awaited()
+        self.assertEqual(session.list_tools.await_count, 5)
         session.call_tool.assert_not_awaited()
+        self.assertEqual(client.interactions.create.await_count, 5)
+        self.assertEqual(
+            client.interactions.create.await_args.kwargs["tools"][0]["name"],
+            "search_products",
+        )
         self.assertEqual((loader.entered, loader.exited, loader.active), (0, 0, False))
-        client.interactions.create.assert_awaited_once()
 
-    async def test_streams_gemini_text_deltas_without_starting_mcp(self) -> None:
+    async def test_streams_gemini_text_deltas_with_tools_available(self) -> None:
+        search_tool = SimpleNamespace(
+            name="search_products",
+            description="Search the product catalog",
+            inputSchema={"type": "object", "properties": {}},
+        )
         session = SimpleNamespace(
-            list_tools=AsyncMock(),
+            list_tools=AsyncMock(
+                return_value=SimpleNamespace(tools=[search_tool])
+            ),
             call_tool=AsyncMock(),
         )
         output_step = SimpleNamespace(
@@ -129,7 +179,7 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
         answer = await respond(
             session,
             client,
-            "Hello",
+            "How are you?",
             "test-model",
             conversation_history=history,
             on_text_delta=streamed_chunks.append,
@@ -144,21 +194,17 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
                 "content": [{"type": "text", "text": "Hello there!"}],
             },
         )
-        session.list_tools.assert_not_awaited()
+        session.list_tools.assert_awaited_once()
         session.call_tool.assert_not_awaited()
         client.interactions.create.assert_awaited_once()
         self.assertTrue(client.interactions.create.await_args.kwargs["stream"])
+        self.assertEqual(
+            client.interactions.create.await_args.kwargs["tools"][0]["name"],
+            "search_products",
+        )
 
-    async def test_ordinary_conversation_is_handled_by_gemini_without_search(self) -> None:
+    async def test_ordinary_conversation_is_answered_without_tool_calls(self) -> None:
         messages = [
-            "Hi",
-            "Hii!!",
-            "Hello",
-            "Hey",
-            "Hey there",
-            "Good morning",
-            "Good afternoon",
-            "Good evening",
             "How are you?",
             "How's it going?",
             "What's up?",
@@ -185,7 +231,12 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
                 )
                 answer_text = f"Gemini response {index} to {message}"
                 interaction = SimpleNamespace(
-                    steps=[SimpleNamespace(type="model_output")],
+                    steps=[
+                        {
+                            "type": "model_output",
+                            "content": [{"type": "text", "text": answer_text}],
+                        }
+                    ],
                     output_text=answer_text,
                 )
                 client = SimpleNamespace(
@@ -194,15 +245,34 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
                     )
                 )
 
-                answer = await respond(session, client, message, "test-model")
+                previous_history = [
+                    {
+                        "type": "model_output",
+                        "content": [{"type": "text", "text": "Earlier reply"}],
+                    }
+                ]
+                history = list(previous_history)
+                answer = await respond(
+                    session,
+                    client,
+                    message,
+                    "test-model",
+                    conversation_history=history,
+                )
 
                 self.assertEqual(answer, answer_text)
-                session.list_tools.assert_not_awaited()
+                session.list_tools.assert_awaited_once()
                 session.call_tool.assert_not_awaited()
                 client.interactions.create.assert_awaited_once()
-                self.assertIsNone(
-                    client.interactions.create.await_args.kwargs["tools"]
+                self.assertEqual(
+                    client.interactions.create.await_args.kwargs["tools"][0][
+                        "name"
+                    ],
+                    "search_products",
                 )
+                self.assertEqual(history[0], previous_history[0])
+                self.assertEqual(history[1]["content"][0]["text"], message)
+                self.assertEqual(history[2]["content"][0]["text"], answer_text)
 
     async def test_discovers_and_calls_mcp_tool_then_returns_answer(self) -> None:
         tool = SimpleNamespace(

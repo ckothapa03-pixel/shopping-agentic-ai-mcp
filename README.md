@@ -55,16 +55,17 @@ agentic-ai-project/
 └── .env
 ```
 
-## Prepare the accounts database
+## Verify the existing accounts database
 
-Before launching the Streamlit website, run this command from the project root:
+The application uses the existing `accounts.sqlite3` database. To check that it
+and the `accounts` table have the expected columns without modifying anything,
+run this read-only verification command from the project root:
 
 ```powershell
 python scripts\setup_accounts_db.py
 ```
 
-This prepares the accounts database and table needed for user registration
-and login.
+This command does not create or change databases, tables, columns, or records.
 
 ## 4. Test the database first
 

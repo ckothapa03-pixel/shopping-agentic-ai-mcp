@@ -1,4 +1,4 @@
-"""Create the Shopwise accounts table before launching the application."""
+"""Verify the existing Shopwise accounts database without modifying it."""
 
 import os
 import sqlite3
@@ -6,35 +6,45 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_PATH = Path(__file__).with_name("accounts_schema.sql")
+EXPECTED_COLUMNS = {
+    "email",
+    "full_name",
+    "password_salt",
+    "password_hash",
+    "created_at",
+}
 
 
 def main() -> None:
     database_path = Path(
         os.environ.get("SHOPPING_AUTH_DB") or PROJECT_ROOT / "accounts.sqlite3"
     ).resolve()
-    database_path.parent.mkdir(parents=True, exist_ok=True)
+    if not database_path.is_file():
+        raise FileNotFoundError(f"Existing accounts database not found: {database_path}")
 
-    with sqlite3.connect(database_path) as connection:
-        connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    database_uri = f"{database_path.as_uri()}?mode=ro"
+    with sqlite3.connect(database_uri, uri=True) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        if "accounts" not in tables:
+            raise RuntimeError(
+                f"The existing accounts table was not found in: {database_path}"
+            )
         columns = {
             row[1]
             for row in connection.execute("PRAGMA table_info(accounts)").fetchall()
         }
-        expected_columns = {
-            "email",
-            "full_name",
-            "password_salt",
-            "password_hash",
-            "created_at",
-        }
-        if columns != expected_columns:
+        if columns != EXPECTED_COLUMNS:
             raise RuntimeError(
-                "The existing accounts table does not match the project schema. "
-                "No existing table or data was changed."
+                "The existing accounts table does not have the expected columns. "
+                f"Found: {sorted(columns)}"
             )
 
-    print(f"Accounts table is ready in: {database_path}")
+    print(f"Verified existing accounts table in: {database_path}")
 
 
 if __name__ == "__main__":

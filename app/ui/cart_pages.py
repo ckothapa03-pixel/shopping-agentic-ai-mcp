@@ -5,6 +5,9 @@ import streamlit as st
 
 from app.shopping.cart import cart_total, remove_from_cart, update_cart_quantity
 from app.ui.catalog import _load_cart_products
+from app.shopping.identity import require_authenticated_user
+from app.db.user_data import remove_cart_item, set_cart_quantity
+from app.db.user_data import clear_cart
 
 def _render_cart() -> None:
     st.header("Your shopping cart")
@@ -69,6 +72,9 @@ def _render_cart() -> None:
                     key=f"update-cart-{product_id}",
                 ):
                     try:
+                        if st.session_state.access_mode == "authenticated":
+                            user_id = require_authenticated_user(st.session_state)
+                            set_cart_quantity(user_id, product_id, selected_quantity)
                         st.session_state.cart = update_cart_quantity(
                             st.session_state.cart,
                             product,
@@ -83,6 +89,13 @@ def _render_cart() -> None:
                 "Remove",
                 key=f"remove-cart-{product_id}",
             ):
+                if st.session_state.access_mode == "authenticated":
+                    try:
+                        user_id = require_authenticated_user(st.session_state)
+                        remove_cart_item(user_id, product_id)
+                    except (PermissionError, OSError, sqlite3.Error) as error:
+                        st.error(str(error))
+                        return
                 st.session_state.cart = remove_from_cart(
                     st.session_state.cart, product_id
                 )
@@ -118,6 +131,12 @@ def _render_cart() -> None:
             st.rerun()
 
         if action_columns[1].button("Clear cart", width="stretch"):
+            if st.session_state.access_mode == "authenticated":
+                try:
+                    clear_cart(require_authenticated_user(st.session_state))
+                except (PermissionError, OSError, sqlite3.Error) as error:
+                    st.error(str(error))
+                    return
             st.session_state.cart = {}
             st.session_state.demo_checkout_complete = False
             st.rerun()

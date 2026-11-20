@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -14,7 +15,7 @@ from google.genai._gaos.lib.compat_errors import (
     RateLimitError,
 )
 
-from app.agent.chat_runtime import _respond_with_agent
+from app.agent.chat_runtime import PROJECT_ROOT, _respond_with_agent
 from app.ui.chat.chat_errors import (
     _chat_error_message,
     _classify_chat_error,
@@ -24,13 +25,17 @@ from app.ui.chat.chat_grounding import ground_chat_answer as _ground_chat_answer
 
 
 class _AsyncContext:
-    def __init__(self, value):
+    def __init__(self, value: object) -> None:
         self.value = value
+        self.enter_count = 0
+        self.exit_count = 0
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> object:
+        self.enter_count += 1
         return self.value
 
-    async def __aexit__(self, *_args):
+    async def __aexit__(self, *_args: object) -> None:
+        self.exit_count += 1
         return None
 
 
@@ -126,45 +131,124 @@ class GroundedChatAnswerTests(unittest.TestCase):
         with patch.dict(os.environ, {"GEMINI_TIMEOUT_SECONDS": "not-a-number"}):
             self.assertEqual(gemini_timeout_seconds(), DEFAULT_GEMINI_TIMEOUT_SECONDS)
 
-    def test_greeting_uses_gemini_without_starting_mcp_server(self) -> None:
-        client = SimpleNamespace(
-            interactions=SimpleNamespace(
-                create=AsyncMock(
-                    return_value=SimpleNamespace(
-                        steps=[
-                            SimpleNamespace(
-                                type="model_output",
-                                model_dump=lambda **_kwargs: {
-                                    "type": "model_output",
-                                    "content": [],
-                                },
-                            )
-                        ],
-                        output_text="Hello! What can I help you find today?",
-                    )
-                )
-            )
-        )
-        gemini_client = SimpleNamespace(aio=_AsyncContext(client))
+    def test_greeting_reaches_gemini_with_mcp_tools_available(self) -> None:
+        history: list[dict[str, object]] = []
+        fake_client = SimpleNamespace()
+        fake_genai = SimpleNamespace(aio=_AsyncContext(fake_client))
+        agent = AsyncMock(return_value="Gemini-generated greeting")
+        stdio_context = _AsyncContext(("read-stream", "write-stream"))
+        mcp_session = SimpleNamespace(initialize=AsyncMock())
+        session_context = _AsyncContext(mcp_session)
         with (
             patch.dict(os.environ, {"GEMINI_API_KEY": "unit-test-key"}),
-            patch("app.agent.chat_runtime.load_dotenv"),
+            patch("app.agent.chat_runtime.respond", agent),
+            patch("app.agent.chat_runtime.genai.Client", return_value=fake_genai) as gemini_client,
+            patch(
+                "app.agent.chat_runtime.stdio_client",
+                return_value=stdio_context,
+            ) as mcp_client,
+            patch(
+                "app.agent.chat_runtime.ClientSession",
+                return_value=session_context,
+            ),
+        ):
+            answer = asyncio.run(_respond_with_agent("Hii", history))
+
+        self.assertEqual(answer, "Gemini-generated greeting")
+        gemini_client.assert_called_once()
+        agent.assert_awaited_once()
+        self.assertIs(agent.await_args.kwargs["session"], mcp_session)
+        mcp_client.assert_called_once()
+        mcp_session.initialize.assert_awaited_once()
+
+    def test_product_request_starts_mcp_and_cleans_up_sessions(self) -> None:
+        history: list[dict[str, object]] = []
+        gemini_context = _AsyncContext(SimpleNamespace())
+        stdio_context = _AsyncContext(("read-stream", "write-stream"))
+        mcp_session = SimpleNamespace(initialize=AsyncMock())
+        session_context = _AsyncContext(mcp_session)
+        agent = AsyncMock(return_value="Catalog response")
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "unit-test-key"}),
             patch(
                 "app.agent.chat_runtime.genai.Client",
-                return_value=gemini_client,
-            ) as gemini_client_factory,
-            patch("app.agent.chat_runtime.stdio_client", new_callable=AsyncMock) as mcp_client,
+                return_value=SimpleNamespace(aio=gemini_context),
+            ),
+            patch(
+                "app.agent.chat_runtime.stdio_client",
+                return_value=stdio_context,
+            ) as mcp_client,
+            patch(
+                "app.agent.chat_runtime.ClientSession",
+                return_value=session_context,
+            ) as session_factory,
+            patch("app.agent.chat_runtime.respond", agent),
         ):
-            answer = asyncio.run(_respond_with_agent("Hii", []))
+            answer = asyncio.run(_respond_with_agent("Find a mouse", history))
 
-        self.assertIn("Hello!", answer)
-        client.interactions.create.assert_awaited_once()
-        retry_options = gemini_client_factory.call_args.kwargs[
-            "http_options"
-        ].retry_options
-        self.assertEqual(retry_options.attempts, 2)
-        self.assertNotIn(429, retry_options.http_status_codes)
-        mcp_client.assert_not_awaited()
+        self.assertEqual(answer, "Catalog response")
+        parameters = mcp_client.call_args.args[0]
+        self.assertEqual(parameters.command, sys.executable)
+        self.assertEqual(parameters.args, ["-m", "app.mcp.mcp_server"])
+        self.assertEqual(parameters.cwd, str(PROJECT_ROOT))
+        self.assertEqual(
+            session_factory.call_args.args,
+            ("read-stream", "write-stream"),
+        )
+        mcp_session.initialize.assert_awaited_once()
+        agent.assert_awaited_once()
+        self.assertIs(agent.await_args.kwargs["session"], mcp_session)
+        self.assertEqual(
+            (gemini_context.enter_count, gemini_context.exit_count),
+            (1, 1),
+        )
+        self.assertEqual(
+            (stdio_context.enter_count, stdio_context.exit_count),
+            (1, 1),
+        )
+        self.assertEqual(
+            (session_context.enter_count, session_context.exit_count),
+            (1, 1),
+        )
+
+    def test_mcp_sessions_are_cleaned_up_when_agent_response_fails(self) -> None:
+        gemini_context = _AsyncContext(SimpleNamespace())
+        stdio_context = _AsyncContext(("read-stream", "write-stream"))
+        session_context = _AsyncContext(SimpleNamespace(initialize=AsyncMock()))
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "unit-test-key"}),
+            patch(
+                "app.agent.chat_runtime.genai.Client",
+                return_value=SimpleNamespace(aio=gemini_context),
+            ),
+            patch(
+                "app.agent.chat_runtime.stdio_client",
+                return_value=stdio_context,
+            ),
+            patch(
+                "app.agent.chat_runtime.ClientSession",
+                return_value=session_context,
+            ),
+            patch(
+                "app.agent.chat_runtime.respond",
+                AsyncMock(side_effect=RuntimeError("agent failure")),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "agent failure"):
+                asyncio.run(_respond_with_agent("Find a mouse", []))
+
+        self.assertEqual(
+            (gemini_context.enter_count, gemini_context.exit_count),
+            (1, 1),
+        )
+        self.assertEqual(
+            (stdio_context.enter_count, stdio_context.exit_count),
+            (1, 1),
+        )
+        self.assertEqual(
+            (session_context.enter_count, session_context.exit_count),
+            (1, 1),
+        )
 
     def test_displays_catalog_results_without_model_product_claims(self) -> None:
         answer = (
@@ -211,6 +295,101 @@ class GroundedChatAnswerTests(unittest.TestCase):
         grounded = _ground_chat_answer("Buy the SuperMouse for ₹500.")
 
         self.assertNotIn("SuperMouse", grounded)
+        self.assertIn("couldn't verify product matches", grounded)
+
+    def test_refuses_cover_letter_request(self) -> None:
+        answer = (
+            "Here is a template you can customize for your applications:\n\n"
+            "[Your Name]\n[Your Phone Number]\n\nDear Hiring Manager,"
+        )
+
+        grounded = _ground_chat_answer(answer, "i want a cover letter for AI Developer")
+
+        self.assertNotIn("Hiring Manager", grounded)
+        self.assertNotIn("[Your Name]", grounded)
+        self.assertIn("shopping", grounded.casefold())
+
+    def test_refuses_job_search_request(self) -> None:
+        answer = "Here are some tips for landing an AI developer role."
+
+        grounded = _ground_chat_answer(answer, "I am searching for a job as AI developer")
+
+        self.assertNotIn("landing", grounded)
+        self.assertIn("shopping", grounded.casefold())
+
+    def test_refuses_philosophical_question(self) -> None:
+        answer = "The meaning of life is a wonderfully deep question."
+
+        grounded = _ground_chat_answer(answer, "What is the meaning of life?")
+
+        self.assertNotIn("deep question", grounded)
+        self.assertIn("shopping", grounded.casefold())
+
+    def test_refuses_off_topic_answer_without_request_keywords(self) -> None:
+        answer = "Dear Hiring Manager,\n\nI am writing to apply for the role."
+
+        grounded = _ground_chat_answer(answer, "Can you help me with something?")
+
+        self.assertNotIn("Hiring Manager", grounded)
+        self.assertIn("shopping", grounded.casefold())
+
+    def test_catalog_results_take_priority_over_scope_guard(self) -> None:
+        answer = (
+            "Catalog results from shopping.db:\n"
+            "- Real catalog item | ₹500.00 | Rating: 4.5/5"
+        )
+
+        grounded = _ground_chat_answer(answer, "find laptops for my job")
+
+        self.assertIn("Real catalog item", grounded)
+
+    def test_refuses_car_recommendation_request(self) -> None:
+        answer = "The best car in India right now is the Tata Nexon."
+
+        grounded = _ground_chat_answer(answer, "can you help me find which is the best car in india")
+
+        self.assertNotIn("Nexon", grounded)
+        self.assertIn("shopping", grounded.casefold())
+        self.assertIn("cables & chargers", grounded.casefold())
+
+    def test_refusal_names_shopwise_categories(self) -> None:
+        grounded = _ground_chat_answer(
+            "Sure, here are the best cars.", "best car in india"
+        )
+
+        self.assertIn("audio", grounded.casefold())
+        self.assertIn("gaming", grounded.casefold())
+
+    def test_refuses_flight_booking_request(self) -> None:
+        answer = "You can book cheap flights on any travel portal."
+
+        grounded = _ground_chat_answer(answer, "book a flight to delhi")
+
+        self.assertNotIn("travel portal", grounded)
+        self.assertIn("shopping", grounded.casefold())
+
+    def test_strips_generic_assistant_filler_opener(self) -> None:
+        answer = (
+            "Glad I could help! Let me know if you would like to filter "
+            "by a specific category."
+        )
+
+        grounded = _ground_chat_answer(answer, "Thanks")
+
+        self.assertNotIn("Glad I could help", grounded)
+        self.assertIn("filter", grounded)
+
+    def test_strips_as_an_ai_opener(self) -> None:
+        answer = "As an AI, I cannot browse shops. Try the Audio category!"
+
+        grounded = _ground_chat_answer(answer, "How do you work?")
+
+        self.assertNotIn("As an AI", grounded)
+        self.assertIn("Audio", grounded)
+
+    def test_filler_only_answer_falls_back_to_verification_message(self) -> None:
+        grounded = _ground_chat_answer("Glad I could help!", "Thanks")
+
         self.assertIn("couldn't verify product matches", grounded)
 
 

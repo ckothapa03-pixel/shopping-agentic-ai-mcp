@@ -1,101 +1,217 @@
-
-        <style>
-        .stApp,
-        .stApp [data-testid="stAppViewContainer"],
-        .stApp [data-testid="stHeader"] {
-            background: #f1f6fa;
-            color: #14283c;
-        }
-        .stApp [data-testid="stMainBlockContainer"] {
-            padding-top: 0.75rem;
-            padding-bottom: 1rem;
-        }
-        .stApp [data-testid="stVerticalBlock"] {
-            gap: 0.65rem;
-        }
-        .stApp .st-key-login-card {
-            background: #ffffff;
-            border: 1px solid #d7e2eb;
-            border-radius: 18px;
-            box-shadow: 0 14px 38px rgba(20, 40, 60, 0.09);
-            padding: 1.15rem 1.35rem;
-        }
-        .login-intro {
-            text-align: center;
-            color: #334a60;
-            margin: 0 0 0.35rem;
-        }
-        .login-intro h1 {
-            color: #102a43;
-            font-size: 1.45rem;
-            line-height: 1.2;
-            margin: 0 0 0.4rem;
-        }
-        .login-intro p,
-        .stApp [data-testid="stMarkdownContainer"] p,
-        .stApp [data-testid="stWidgetLabel"] p,
-        .stApp label {
-            color: #334a60;
-        }
-        .stApp [data-testid="stCaptionContainer"] {
-            color: #52677c;
-            text-align: center;
-        }
-        .stApp [data-testid="stTextInputRootElement"] {
-            background: #ffffff;
-            border: 1px solid #bdcbd8;
-        }
-        .stApp [data-testid="stTextInputField"] {
-            background: #ffffff;
-            color: #14283c;
-        }
-        .stApp [data-testid="stTextInputRootElement"]:focus-within {
-            border-color: #0f766e;
-            box-shadow: 0 0 0 1px #0f766e;
-        }
-        .stApp [data-testid="stBaseButton-primaryFormSubmit"] {
-            background: #0f766e;
-            border-color: #0f766e;
-            border-radius: 10px;
-            color: #ffffff;
-            min-height: 2.8rem;
-        }
-        .stApp [data-testid="stBaseButton-primaryFormSubmit"] p {
-            color: #ffffff;
-        }
-        .stApp [data-testid="stBaseButton-primaryFormSubmit"]:hover {
-            background: #115e59;
-            border-color: #115e59;
-            color: #ffffff;
-        }
-        .stApp [data-testid="stBaseButton-secondary"] {
-            background: #f4f8fa;
-            border: 1px solid #c7d5df;
-            border-radius: 10px;
-            color: #173b4f;
-            min-height: 2.55rem;
-        }
-        .stApp [data-testid="stBaseButton-secondary"] p {
-            color: #173b4f;
-        }
-        .stApp [data-testid="stBaseButton-secondary"]:hover {
-            background: #e5f0f1;
-            border-color: #7aa9aa;
-            color: #102f3e;
-        }
-        .stApp [data-testid="stBaseButton-secondary"][kind="secondary"] {
-            font-weight: 600;
-        }
-        .stApp [data-testid="stMainBlockContainer"] hr {
-            border-color: #d7e2eb;
-            margin: 0.35rem 0;
-        }
-        @media (max-width: 640px) {
-            .stApp .st-key-login-card {
-                padding: 0.9rem;
-            }
-            .login-intro h1 {
-                font-size: 1.35rem;
-            }
-        }
-        </style>
+<style>
+.stApp,
+.stApp [data-testid="stAppViewContainer"],
+.stApp [data-testid="stHeader"] {
+    color: #101a36;
+    background-color: #f3f9ff;
+}
+.stApp [data-testid="stHeader"] {
+    display: none;
+}
+.stApp [data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(circle at 0% 0%, rgba(181, 236, 235, 0.62) 0 6rem, transparent 6.05rem),
+        radial-gradient(ellipse at 100% 78%, rgba(177, 235, 231, 0.5), transparent 25rem),
+        radial-gradient(ellipse at 3% 96%, rgba(190, 235, 240, 0.55), transparent 19rem),
+        linear-gradient(135deg, #f8fcff 0%, #edf6ff 55%, #f1fbfb 100%);
+}
+.stApp [data-testid="stMainBlockContainer"] {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+}
+.stApp [data-testid="stVerticalBlock"] {
+    gap: 0.62rem;
+}
+.stApp [data-testid="stForm"] {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+.stApp [data-testid="stForm"] [data-testid="stVerticalBlock"] {
+    gap: 0.62rem;
+}
+/* Keep Sign In as the default Enter action while showing options above it. */
+.stApp [data-testid="stForm"] > [data-testid="stVerticalBlock"] > .st-key-login-actions {
+    order: 1;
+}
+.stApp [data-testid="stForm"] > [data-testid="stVerticalBlock"] > .st-key-login-submit {
+    order: 2;
+}
+.stApp .st-key-login-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 420px;
+    margin: 2rem auto;
+    padding: 1.65rem 1.45rem 2.15rem;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 18px 42px rgba(34, 79, 119, 0.14);
+}
+.login-brand {
+    margin: 0 0 1.15rem;
+    text-align: center;
+}
+.login-wordmark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #101a36;
+    font-size: 2.65rem;
+    font-weight: 750;
+    letter-spacing: -0.07rem;
+    line-height: 1.1;
+}
+.login-wordmark svg {
+    width: 3.1rem;
+    height: 3.1rem;
+    margin-right: 0.55rem;
+    fill: #078e83;
+}
+.login-wordmark .brand-wise {
+    color: #078e83;
+}
+.login-brand p {
+    margin: 0.25rem 0 0;
+    color: #687b9b;
+    font-size: 0.9rem;
+}
+.login-intro {
+    margin: 0 0 0.45rem;
+    text-align: center;
+}
+.login-intro h1 {
+    margin: 0;
+    color: #101a36;
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+.login-intro p,
+.stApp [data-testid="stWidgetLabel"] p,
+.stApp label {
+    color: #17213b;
+}
+.login-intro p {
+    margin: 0.2rem 0 0;
+    color: #687b9b;
+    font-size: 1rem;
+}
+.stApp [data-testid="stTextInputRootElement"] {
+    min-height: 2.75rem;
+    border: 1px solid #cbd6e6;
+    border-radius: 8px;
+    background: #fff;
+}
+.stApp [data-testid="stTextInputField"] {
+    color: #17213b;
+    background: #fff;
+}
+.stApp [data-testid="stTextInputRootElement"]:focus-within {
+    border-color: #078e83;
+    box-shadow: 0 0 0 1px #078e83;
+}
+.stApp [data-testid="stTextInputRootElement"] input::placeholder {
+    color: #8190aa;
+}
+.stApp [data-testid="stBaseButton-primaryFormSubmit"] {
+    min-height: 2.75rem;
+    border: 1px solid #078e83;
+    border-radius: 9px;
+    background: #078e83;
+    color: #fff;
+}
+.stApp [data-testid="stBaseButton-primaryFormSubmit"] p {
+    color: #fff;
+    font-weight: 650;
+}
+.stApp [data-testid="stBaseButton-primaryFormSubmit"]:hover {
+    border-color: #06786f;
+    background: #06786f;
+    color: #fff;
+}
+.stApp [data-testid="stBaseButton-secondary"] {
+    min-height: 2.65rem;
+    border: 1px solid #b7ccec;
+    border-radius: 9px;
+    background: #f6f9ff;
+    color: #365679;
+}
+.stApp [data-testid="stBaseButton-secondary"] p {
+    color: #365679;
+    font-weight: 650;
+}
+.stApp [data-testid="stBaseButton-secondary"]:hover {
+    border-color: #86a9d8;
+    background: #edf4ff;
+}
+.stApp [data-testid="stBaseButton-tertiary"] {
+    min-height: 2.4rem;
+    padding-right: 0;
+    padding-left: 0;
+    color: #6253ee;
+}
+.stApp [data-testid="stBaseButton-tertiary"] p {
+    color: #6253ee;
+}
+.stApp [data-testid="stCheckbox"] label {
+    color: #17213b;
+    font-size: 0.84rem;
+}
+.login-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin: 0.25rem 0 0.1rem;
+    color: #71819e;
+    font-size: 0.9rem;
+}
+.login-divider::before,
+.login-divider::after {
+    height: 1px;
+    flex: 1;
+    background: #d7dfec;
+    content: "";
+}
+.login-create-prompt {
+    margin: 0.2rem 0 0;
+    color: #71819e;
+    text-align: center;
+    font-size: 0.9rem;
+}
+.stApp .st-key-create-account button {
+    min-height: 2.65rem;
+    border-color: #d9f6f0;
+    border-radius: 9px;
+    background: #dff8f3;
+    color: #008b80;
+}
+.stApp .st-key-create-account button p {
+    color: #008b80;
+    font-weight: 650;
+}
+.stApp .st-key-create-account button:hover {
+    border-color: #b6ece3;
+    background: #d1f3ed;
+}
+@media (max-width: 640px) {
+    .stApp [data-testid="stMainBlockContainer"] {
+        padding: 0.5rem 0.75rem 1rem;
+    }
+    .stApp .st-key-login-card {
+        margin: 0.3rem auto;
+        padding: 1rem;
+        max-width: 100%;
+    }
+    .login-wordmark {
+        font-size: 2.05rem;
+    }
+    .login-wordmark svg {
+        width: 2.45rem;
+        height: 2.45rem;
+    }
+    .login-intro h1 {
+        font-size: 1.55rem;
+    }
+}
+</style>

@@ -20,7 +20,10 @@ def _chat_error_message(error: Exception) -> str:
     category, _status_code = _classify_chat_error(error)
 
     if category == "timeout":
-        return "The AI request timed out. Please try again."
+        return (
+            "Gemini did not respond before the request timed out. Check your "
+            "network connection, VPN, or firewall, then try again."
+        )
 
     if category == "connection":
         return "Shopwise couldn't connect to Gemini. Check your connection and try again."

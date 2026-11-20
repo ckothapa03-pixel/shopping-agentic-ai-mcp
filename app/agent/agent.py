@@ -24,7 +24,6 @@ __all__ = [
     "_needs_budget_clarification",
     "chat",
     "gemini_timeout_seconds",
-    "is_conversational_only",
     "respond",
 ]
 
@@ -39,62 +38,10 @@ _BUDGET_AMOUNT = re.compile(
 
 _BUDGET_CLARIFICATION = "What is your maximum budget in rupees?"
 
-_GREETING_PREFIX = re.compile(
-    r"^(?:hi+|hello+|hey+|good\s+(?:morning|afternoon|evening))"
-    r"(?:\s+there)?(?:\s*[,;:!?]\s*|\s+|$)",
-    re.IGNORECASE,
-)
-
-_CONVERSATIONAL_ONLY_MESSAGES = {
-    "hi",
-    "hii",
-    "hiii",
-    "hello",
-    "hey",
-    "hey there",
-    "good morning",
-    "good afternoon",
-    "good evening",
-    "how are you",
-    "how are you doing",
-    "hows it going",
-    "whats up",
-    "thanks",
-    "thank you",
-    "thanks thats helpful",
-    "thank you thats helpful",
-    "okay",
-    "ok",
-    "great",
-    "okay thanks",
-    "ok thanks",
-    "who are you",
-    "who are you and what can you do",
-    "what can you do",
-    "what can you do for me",
-    "how can you help",
-    "how can you help me",
-    "what is shopwise",
-    "what does shopwise do",
-    "how does shopwise work",
-    "tell me about shopwise",
-}
-
 def _needs_budget_clarification(message: str) -> bool:
     return bool(
         _BUDGET_INTENT.search(message) and not _BUDGET_AMOUNT.search(message)
     )
-
-def _is_conversational_only(message: str) -> bool:
-    normalized = message.casefold().replace("’", "'").strip()
-    normalized = _GREETING_PREFIX.sub("", normalized, count=1).strip()
-    normalized = re.sub(r"[^\w\s]", "", normalized)
-    normalized = " ".join(normalized.split())
-    return not normalized or normalized in _CONVERSATIONAL_ONLY_MESSAGES
-
-def is_conversational_only(message: str) -> bool:
-    """Return whether a message is conversational and needs no catalog tools."""
-    return _is_conversational_only(message)
 
 def _format_product_results(products: list[dict[str, Any]]) -> str:
     if not products:
@@ -160,12 +107,11 @@ async def respond(
             )
         return _BUDGET_CLARIFICATION
 
-    is_conversational_only = _is_conversational_only(user_message)
-    mcp_tools = (
-        []
-        if is_conversational_only
-        else await list_available_tools(session)
-    )
+    if on_stage is not None:
+        on_stage("mcp_tool_discovery_started")
+    mcp_tools = await list_available_tools(session)
+    if on_stage is not None:
+        on_stage("mcp_tool_discovery_completed")
     tools = _gemini_tools(mcp_tools)
     product_result_sections: list[str] = []
     history = list(conversation_history or [])
@@ -176,38 +122,21 @@ async def respond(
         }
     )
 
+    request_number = 0
     for round_number in range(max_tool_rounds + 1):
-        stream_text = on_text_delta is not None and not tools
+        stream_text = on_text_delta is not None
+        request_number += 1
         interaction = await request_gemini_interaction(
             client,
             model=model,
             history=history,
             tools=tools,
+            request_number=request_number,
             stream_text=stream_text,
             on_text_delta=on_text_delta,
             on_stage=on_stage,
         )
-        requested_calls = _function_calls(interaction)
-        function_calls = requested_calls
-        if is_conversational_only:
-            function_calls = [
-                call
-                for call in requested_calls
-                if getattr(call, "name", None) != "search_products"
-            ]
-        if requested_calls and not function_calls:
-            answer = getattr(interaction, "output_text", None) or (
-                "I'm here to help with Shopwise. What would you like to know?"
-            )
-            if conversation_history is not None:
-                history.append(
-                    {
-                        "type": "model_output",
-                        "content": [{"type": "text", "text": answer}],
-                    }
-                )
-                conversation_history[:] = history
-            return answer
+        function_calls = _function_calls(interaction)
         if not function_calls:
             answer = getattr(interaction, "output_text", None) or ""
             if product_result_sections:

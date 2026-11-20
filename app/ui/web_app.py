@@ -11,6 +11,11 @@ from app.ui.cart_pages import _render_cart
 from app.ui.checkout_page import _render_demo_checkout
 from app.ui.chat.chat import _render_chat_launcher
 from app.ui.wishlist_page import _render_wishlist
+from app.db.schema import initialize_shopping_schema
+from app.ui.address_pages import _render_addresses
+from app.ui.orders_page import _render_orders
+from app.ui.order_detail_page import _render_order_detail
+from app.ui.comparison_page import _render_comparison
 
 def _render_login_screen() -> None:
     render_login_screen()
@@ -20,6 +25,11 @@ def _inject_store_styles() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Shopwise", page_icon="🛍️", layout="wide")
+    try:
+        initialize_shopping_schema()
+    except (OSError, sqlite3.Error):
+        st.error("Shopwise could not initialize local shopping data.")
+        return
 
     if st.session_state.get("access_mode") not in {"guest", "authenticated"}:
         _render_login_screen()
@@ -65,6 +75,14 @@ def main() -> None:
         _render_profile()
     elif page == "settings" and st.session_state.access_mode == "authenticated":
         _render_settings()
+    elif page == "addresses" and st.session_state.access_mode == "authenticated":
+        _render_addresses()
+    elif page == "orders" and st.session_state.access_mode == "authenticated":
+        _render_orders()
+    elif page.startswith("order-detail:") and st.session_state.access_mode == "authenticated":
+        _render_order_detail(int(page.split(":", 1)[1]))
+    elif page == "compare":
+        _render_comparison()
     else:
         st.session_state.store_page = "shop"
         catalog_ui._render_shop(facets)

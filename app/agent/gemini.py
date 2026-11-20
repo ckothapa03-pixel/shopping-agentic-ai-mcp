@@ -1,5 +1,7 @@
 import logging
 import os
+import sys
+import time
 from types import SimpleNamespace
 from typing import Any, Callable
 
@@ -10,11 +12,37 @@ MIN_GEMINI_TIMEOUT_SECONDS = 5
 MAX_GEMINI_TIMEOUT_SECONDS = 300
 
 SYSTEM_PROMPT = (
-    "You are a helpful shopping assistant. Respond naturally to ordinary "
-    "greetings without searching the product catalog or making product claims. "
-    "Use the product search tool only when the shopper asks about specific "
-    "products, recommendations, or catalog availability. Search the product "
-    "catalog using the available tools before making product recommendations. "
+    "You are the Shopwise shopping assistant. Your only role is helping "
+    "shoppers with the Shopwise store and its product catalog. "
+    "In scope: finding products, making recommendations, comparing products "
+    "or prices, checking availability, answering questions about catalog "
+    "details such as price, rating, stock, brand, or category, helping with "
+    "shopping and cart questions, and answering questions about Shopwise. "
+    "Everything else is out of scope, including job searches, career advice, "
+    "cover letters, resumes, interview preparation, homework, essays, coding "
+    "help, general knowledge, philosophy, and personal advice. "
+    "When a request is out of scope, politely decline in one or two "
+    "sentences, explain that you can only help with shopping at Shopwise, "
+    "and redirect the shopper to products or shopping help. Never provide "
+    "any part of the requested out-of-scope content, not even templates, "
+    "examples, or partial answers. "
+    "When declining, name the Shopwise categories closest to the request if "
+    "any exist (for example, a car question can be redirected to car "
+    "chargers or phone mounts from Cables & Chargers); otherwise name two "
+    "or three popular Shopwise categories such as Audio, Gaming, Monitors & "
+    "Displays, Smart Home, or Wearables & Mobile. "
+    "Never use generic AI-assistant phrasing such as 'as an AI', 'as a "
+    "language model', or a bare 'Glad I could help!' without a shopping "
+    "follow-up. "
+    "For greetings, thanks, and other small talk, reply briefly and redirect "
+    "to shopping. "
+    "Answer in-scope conversational messages and questions about Shopwise "
+    "directly without using shopping tools. "
+    "Use the available shopping tools only when a response depends on current "
+    "product catalog information, such as finding products, making "
+    "recommendations, comparing product prices, or checking availability. "
+    "Do not make product claims without searching the catalog. "
+    "Search the product catalog before making product recommendations. "
     "Treat a stated budget "
     "as a maximum price and pass it as max_price to search_products. If a shopper "
     "asks to find products within a budget but does not state an amount, ask only "
@@ -48,6 +76,7 @@ def gemini_timeout_seconds() -> int:
         )
         return DEFAULT_GEMINI_TIMEOUT_SECONDS
     return timeout
+
 
 class GeminiStreamError(RuntimeError):
     """Sanitized streaming failure carrying only an optional HTTP status."""
@@ -132,23 +161,51 @@ async def request_gemini_interaction(
     model: str,
     history: list[dict[str, Any]],
     tools: list[dict[str, Any]],
+    request_number: int = 1,
     stream_text: bool,
     on_text_delta: Callable[[str], None] | None,
     on_stage: Callable[[str], None] | None,
 ) -> Any:
+    started_at = time.perf_counter()
+    outcome = "failed"
     if on_stage is not None:
         on_stage("gemini_request_started")
-    response = await client.interactions.create(
-        model=model,
-        input=list(history),
-        tools=tools or None,
-        system_instruction=SYSTEM_PROMPT,
-        store=False,
-        timeout=gemini_timeout_seconds(),
-        **({"stream": True} if stream_text else {}),
-    )
-    if on_stage is not None:
-        on_stage("gemini_stream_opened" if stream_text else "gemini_response_received")
-    if stream_text and on_text_delta is not None:
-        return await _consume_interaction_stream(response, on_text_delta, on_stage)
-    return response
+    try:
+        response = await client.interactions.create(
+            model=model,
+            input=list(history),
+            tools=tools or None,
+            system_instruction=SYSTEM_PROMPT,
+            store=False,
+            timeout=gemini_timeout_seconds(),
+            **({"stream": True} if stream_text else {}),
+        )
+        if on_stage is not None:
+            on_stage(
+                "gemini_stream_opened"
+                if stream_text
+                else "gemini_response_received"
+            )
+        if stream_text and on_text_delta is not None:
+            response = await _consume_interaction_stream(
+                response,
+                on_text_delta,
+                on_stage,
+            )
+        outcome = "completed"
+        return response
+    finally:
+        if os.getenv("SHOPWISE_CHAT_TIMING", "").strip().casefold() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            elapsed = time.perf_counter() - started_at
+            print(
+                "Shopwise chat timing "
+                f"stage=gemini_request request={request_number} "
+                f"outcome={outcome} elapsed_seconds={elapsed:.3f}",
+                file=sys.stderr,
+                flush=True,
+            )

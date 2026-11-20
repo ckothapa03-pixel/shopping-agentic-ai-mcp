@@ -69,7 +69,7 @@ def _render_chat_launcher() -> None:
                         "details, or answer questions about Shopwise."
                     )
 
-            for message in st.session_state.chat_messages:
+            for message_index, message in enumerate(st.session_state.chat_messages):
                 avatar = (
                     ":material/person:"
                     if message["role"] == "user"
@@ -83,8 +83,13 @@ def _render_chat_launcher() -> None:
                     else:
                         st.markdown(message["content"])
 
-                        for product in message.get("products", []):
-                            _render_chat_product(product)
+                        for product_index, product in enumerate(
+                            message.get("products", [])
+                        ):
+                            _render_chat_product(
+                                product,
+                                f"message-{message_index}-product-{product_index}",
+                            )
 
         with st.form(
             "shopwise-chat-form",

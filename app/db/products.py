@@ -237,3 +237,53 @@ def get_products_by_ids(product_ids: list[int]) -> list[dict[str, Any]]:
     with closing(get_connection()) as connection:
         rows = connection.execute(query, product_ids).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_product_details(product_id: int) -> dict[str, Any] | None:
+    if isinstance(product_id, bool) or not isinstance(product_id, int) or product_id < 1:
+        raise ValueError("Product id must be a positive integer")
+    with closing(get_connection()) as connection:
+        row = connection.execute(
+            _PRODUCT_SELECT + " WHERE p.id = ?",
+            (product_id,),
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def get_similar_products(product_id: int, limit: int = 6) -> list[dict[str, Any]]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    product = get_product_details(product_id)
+    if product is None:
+        return []
+    category = product["category"]
+    brand = product["brand"]
+    price = float(product["price"])
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            _PRODUCT_SELECT
+            + """
+              WHERE p.id != ?
+                AND p.stock > 0
+                AND (
+                    (? IS NOT NULL AND c.name = ?)
+                    OR (? IS NOT NULL AND b.name = ?)
+                    OR ABS(p.price - ?) <= ?
+                )
+              ORDER BY
+                CASE WHEN c.name = ? THEN 0 ELSE 1 END,
+                CASE WHEN b.name = ? THEN 0 ELSE 1 END,
+                ABS(p.price - ?),
+                p.rating_avg DESC,
+                p.id ASC
+              LIMIT ?
+            """,
+            (
+                product_id,
+                category, category,
+                brand, brand,
+                price, max(price * 0.25, 500.0),
+                category, brand, price, limit,
+            ),
+        ).fetchall()
+    return [dict(row) for row in rows]

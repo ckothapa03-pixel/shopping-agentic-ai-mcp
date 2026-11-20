@@ -212,7 +212,7 @@ Shopper
 - The schema also includes `users`, `addresses`, `cart_items`, `reviews`, `coupons`, `orders`, and `order_items`. Their presence does not mean the current UI implements or writes those workflows.
 - Schema constraints include unique product SKU, category and brand names, nonnegative stock, positive product price, MRP not below price, review ratings from 1–5, unique review per product/user, positive cart/order-item quantities, and foreign keys connecting related rows.
 - The `orders` schema requires a user and constrained status/payment-method values. The application currently does not create orders.
-- Local demo account credentials are separate in `accounts.sqlite3`, which is created/initialized when the account code runs. It is not linked to `shopping.db` user IDs.
+- Local demo account credentials are stored in the existing `accounts.sqlite3` database. Authentication does not initialize its schema or alter the database. It is not linked to `shopping.db` user IDs.
 - The current application does not read private customer/order records for product browsing and does not use the database `cart_items`, `reviews`, `coupons`, `orders`, or `order_items` tables as active UI features.
 
 ### Requirements for future persistence

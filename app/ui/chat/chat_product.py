@@ -3,7 +3,7 @@ from typing import Any
 
 import streamlit as st
 
-def _render_chat_product(product: dict[str, Any]) -> None:
+def _render_chat_product(product: dict[str, Any], render_key: str) -> None:
     """Render product facts supplied by the database-backed MCP search."""
     name = html.escape(str(product.get("name") or "Catalog product"))
     price = product.get("price")
@@ -28,7 +28,10 @@ def _render_chat_product(product: dict[str, Any]) -> None:
         else "Out of stock"
     )
 
-    with st.container(border=True, key=f"chat-product-{product.get('id', name)}"):
+    with st.container(
+        border=True,
+        key=f"chat-product-{product.get('id', name)}-{render_key}",
+    ):
         st.markdown(
             '<div class="product-image-placeholder" role="img" '
             f'aria-label="Image of {name} unavailable">'
@@ -41,3 +44,8 @@ def _render_chat_product(product: dict[str, Any]) -> None:
             f"{stock_text} · {product.get('brand') or '—'} · "
             f"{product.get('category') or '—'}"
         )
+        description = product.get("description")
+        if isinstance(description, str) and description.strip():
+            st.write(description)
+        else:
+            st.caption("No description available.")

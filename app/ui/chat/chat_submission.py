@@ -90,16 +90,25 @@ def _process_chat_submission(
 
     submission_completed = False
     timing_started_at = time.perf_counter()
+    last_stage_at = timing_started_at
     _record_chat_stage(timing_started_at, "submission_received")
 
     def record_stage(stage: str) -> None:
-        _record_chat_stage(timing_started_at, stage)
+        nonlocal last_stage_at
+        now = time.perf_counter()
+        _record_chat_stage(
+            timing_started_at,
+            stage,
+            stage_elapsed_seconds=now - last_stage_at,
+        )
+        last_stage_at = now
 
     try:
         # The configured SDK timeout governs the Gemini request. Leave a
         # bounded cushion for client setup/teardown and the MCP product flow.
         load_dotenv(PROJECT_ROOT / ".env")
 
+        record_stage("agent_execution_started")
         answer = asyncio.run(
             asyncio.wait_for(
                 _respond_with_agent(
@@ -112,10 +121,16 @@ def _process_chat_submission(
                     ),
                     on_text_delta=None,
                     on_stage=record_stage,
+                    user_id=(
+                        st.session_state.get("authenticated_user_id")
+                        if st.session_state.access_mode == "authenticated"
+                        else None
+                    ),
                 ),
                 timeout=gemini_timeout_seconds() + CHAT_TIMEOUT_PADDING_SECONDS,
             )
         )
+        record_stage("agent_execution_completed")
 
         answer = _ground_chat_answer(answer, submitted_message)
         record_stage("response_completed")
@@ -154,9 +169,15 @@ def _process_chat_submission(
             with response_slot.container():
                 st.markdown(assistant_entry["content"])
 
-                for product in assistant_entry.get("products", []):
-                    _render_chat_product(product)
+                for product_index, product in enumerate(
+                    assistant_entry.get("products", [])
+                ):
+                    _render_chat_product(
+                        product,
+                        f"response-product-{product_index}",
+                    )
 
+            record_stage("response_rendered")
             # The final answer is already written into its visible slot above.
             # Rerun once to re-enable the composer and render the settled state.
             st.rerun()

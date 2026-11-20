@@ -14,6 +14,7 @@ def _logout_to_guest() -> None:
     st.session_state.access_mode = "guest"
     st.session_state.pop("authenticated_email", None)
     st.session_state.pop("authenticated_name", None)
+    st.session_state.pop("authenticated_user_id", None)
     st.session_state.pop("auth_notice", None)
     st.session_state.auth_view = "login"
     st.session_state.store_page = "shop"
@@ -69,7 +70,7 @@ def _render_store_header() -> None:
                 account_action = actions[0].menu_button(
                     "Account",
                     options=(
-                        ["Profile", "Settings", "Logout"]
+                        ["Profile", "Settings", "Addresses", "Orders", "Logout"]
                         if st.session_state.access_mode == "authenticated"
                         else ["Login"]
                     ),
@@ -123,6 +124,14 @@ def _render_store_header() -> None:
 
                 if account_action == "Settings":
                     st.session_state.store_page = "settings"
+                    st.rerun()
+
+                if account_action == "Addresses":
+                    st.session_state.store_page = "addresses"
+                    st.rerun()
+
+                if account_action == "Orders":
+                    st.session_state.store_page = "orders"
                     st.rerun()
 
                 if account_action == "Login":

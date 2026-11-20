@@ -1,125 +1,175 @@
-import os
 import sqlite3
-import tempfile
 import unittest
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
+from tempfile import gettempdir
+from uuid import uuid4
+from unittest.mock import patch
 
+from app.shopping import authentication
 from app.shopping.authentication import authenticate_account, register_account
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ACCOUNTS_SCHEMA_PATH = PROJECT_ROOT / "scripts" / "accounts_schema.sql"
+EXPECTED_COLUMNS = {
+    "email",
+    "full_name",
+    "password_salt",
+    "password_hash",
+    "created_at",
+}
+
+
+class _FakeCursor:
+    def __init__(self, row):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+class _FakeConnection:
+    def __init__(self):
+        self.accounts = {}
+
+    def execute(self, query, parameters):
+        if query.lstrip().startswith("INSERT INTO accounts"):
+            email, full_name, salt, password_hash = parameters
+            if email in self.accounts:
+                raise sqlite3.IntegrityError("duplicate email")
+            self.accounts[email] = {
+                "email": email,
+                "full_name": full_name,
+                "password_salt": salt,
+                "password_hash": password_hash,
+            }
+            return _FakeCursor(None)
+
+        if query.lstrip().startswith("SELECT email, full_name"):
+            return _FakeCursor(self.accounts.get(parameters[0]))
+
+        raise AssertionError(f"Unexpected authentication query: {query}")
 
 
 class AccountAuthenticationTests(unittest.TestCase):
     def setUp(self) -> None:
-        file_descriptor, database_path = tempfile.mkstemp(
-            prefix="accounts-auth-test-", suffix=".sqlite3", dir=PROJECT_ROOT
-        )
-        os.close(file_descriptor)
-        self.database_path = Path(database_path)
-        with closing(sqlite3.connect(self.database_path)) as connection:
-            connection.executescript(ACCOUNTS_SCHEMA_PATH.read_text(encoding="utf-8"))
+        self.connection = _FakeConnection()
 
-    def tearDown(self) -> None:
-        self.database_path.unlink(missing_ok=True)
+    @contextmanager
+    def _fake_account_connection(self, _db_path):
+        yield self.connection
 
     def test_registration_stores_a_hash_and_authentication_verifies_credentials(
         self,
     ) -> None:
-        account = register_account(
-            "Shopper@example.com",
-            "correct-horse",
-            "Demo Shopper",
-            self.database_path,
-        )
-
-        self.assertEqual(
-            account,
-            {"email": "shopper@example.com", "full_name": "Demo Shopper"},
-        )
-        self.assertEqual(
-            authenticate_account(
-                "SHOPPER@example.com",
-                "correct-horse",
-                self.database_path,
+        shopping_user = {
+            "user_id": "USR-TEST",
+            "full_name": "Demo Shopper",
+            "email": "shopper@example.com",
+            "is_active": True,
+        }
+        with (
+            patch.object(
+                authentication,
+                "_account_connection",
+                self._fake_account_connection,
             ),
-            account,
-        )
-        self.assertIsNone(
-            authenticate_account(
-                "shopper@example.com",
-                "wrong-password",
-                self.database_path,
+            patch.object(
+                authentication,
+                "resolve_shopping_user",
+                return_value=shopping_user,
+            ),
+        ):
+            account = register_account(
+                "Shopper@example.com",
+                "correct-horse",
+                "Demo Shopper",
             )
-        )
+            self.assertEqual(
+                account,
+                {
+                    "email": "shopper@example.com",
+                    "full_name": "Demo Shopper",
+                    "user_id": "USR-TEST",
+                },
+            )
+            self.assertEqual(
+                authenticate_account("SHOPPER@example.com", "correct-horse"),
+                account,
+            )
+            self.assertIsNone(
+                authenticate_account("shopper@example.com", "wrong-password")
+            )
 
-        with closing(sqlite3.connect(self.database_path)) as connection:
-            salt, password_hash = connection.execute(
-                "SELECT password_salt, password_hash FROM accounts"
-            ).fetchone()
-        self.assertNotEqual(password_hash, b"correct-horse")
-        self.assertEqual(len(salt), 16)
+        stored_account = self.connection.accounts["shopper@example.com"]
+        self.assertNotEqual(stored_account["password_hash"], b"correct-horse")
+        self.assertEqual(len(stored_account["password_salt"]), 16)
 
     def test_rejects_duplicate_and_invalid_registration(self) -> None:
-        register_account(
-            "shopper@example.com",
-            "correct-horse",
-            "Demo Shopper",
-            self.database_path,
-        )
-
-        with self.assertRaisesRegex(ValueError, "already exists"):
+        shopping_user = {
+            "user_id": "USR-TEST",
+            "full_name": "Demo Shopper",
+            "email": "shopper@example.com",
+            "is_active": True,
+        }
+        with (
+            patch.object(
+                authentication,
+                "_account_connection",
+                self._fake_account_connection,
+            ),
+            patch.object(
+                authentication,
+                "resolve_shopping_user",
+                return_value=shopping_user,
+            ),
+        ):
             register_account(
-                "SHOPPER@example.com",
-                "another-password",
-                "Another Shopper",
-                self.database_path,
-            )
-        with self.assertRaisesRegex(ValueError, "valid email"):
-            register_account(
-                "not-an-email",
+                "shopper@example.com",
                 "correct-horse",
                 "Demo Shopper",
-                self.database_path,
             )
-        with self.assertRaisesRegex(ValueError, "at least 8"):
-            register_account(
-                "new@example.com",
-                "short",
-                "Demo Shopper",
-                self.database_path,
-            )
-
-    def test_authentication_does_not_create_missing_database_or_table(self) -> None:
-        missing_database = self.database_path.with_name("missing-accounts.sqlite3")
-        with self.assertRaises(FileNotFoundError):
-            authenticate_account("shopper@example.com", "correct-horse", missing_database)
-        self.assertFalse(missing_database.exists())
-
-        file_descriptor, empty_database_name = tempfile.mkstemp(
-            prefix="accounts-no-schema-test-",
-            suffix=".sqlite3",
-            dir=PROJECT_ROOT,
-        )
-        os.close(file_descriptor)
-        empty_database = Path(empty_database_name)
-        try:
-            with self.assertRaisesRegex(sqlite3.OperationalError, "no such table"):
-                authenticate_account(
-                    "shopper@example.com",
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                register_account(
+                    "SHOPPER@example.com",
+                    "another-password",
+                    "Another Shopper",
+                )
+            with self.assertRaisesRegex(ValueError, "valid email"):
+                register_account(
+                    "not-an-email",
                     "correct-horse",
-                    empty_database,
+                    "Demo Shopper",
                 )
-            with closing(sqlite3.connect(empty_database)) as connection:
-                self.assertEqual(
-                    connection.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table'"
-                    ).fetchall(),
-                    [],
+            with self.assertRaisesRegex(ValueError, "at least 8"):
+                register_account("new@example.com", "short", "Demo Shopper")
+
+    def test_existing_accounts_database_has_the_expected_columns(self) -> None:
+        database_path = PROJECT_ROOT / "accounts.sqlite3"
+        self.assertTrue(database_path.is_file())
+        database_uri = f"{database_path.resolve().as_uri()}?mode=ro"
+        with closing(sqlite3.connect(database_uri, uri=True)) as connection:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
                 )
-        finally:
-            empty_database.unlink(missing_ok=True)
+            }
+            self.assertIn("accounts", tables)
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(accounts)")
+            }
+        self.assertEqual(columns, EXPECTED_COLUMNS)
+
+    def test_authentication_does_not_create_a_missing_database(self) -> None:
+        missing_database = Path(gettempdir()) / f"{uuid4().hex}.sqlite3"
+        with self.assertRaises(FileNotFoundError):
+            authenticate_account(
+                "shopper@example.com",
+                "correct-horse",
+                missing_database,
+            )
+        self.assertFalse(missing_database.exists())
 
 
 if __name__ == "__main__":

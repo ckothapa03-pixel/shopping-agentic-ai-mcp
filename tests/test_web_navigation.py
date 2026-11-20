@@ -1,9 +1,6 @@
 import asyncio
 import os
-import sqlite3
-import tempfile
 import unittest
-from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -12,9 +9,8 @@ from google.genai.errors import ClientError
 from app.db.products import count_products, find_products, get_catalog_facets
 from streamlit.testing.v1 import AppTest
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = Path(__file__).resolve().parent.parent / "app" / "ui" / "web_app.py"
-PROJECT_ROOT = APP_PATH.parents[2]
-ACCOUNTS_SCHEMA_PATH = PROJECT_ROOT / "scripts" / "accounts_schema.sql"
 
 
 class _AsyncContext:
@@ -30,23 +26,33 @@ class _AsyncContext:
 
 class ShoppingAccessNavigationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.previous_auth_database = os.environ.get("SHOPPING_AUTH_DB")
-        file_descriptor, database_path = tempfile.mkstemp(
-            prefix="accounts-navigation-test-", suffix=".sqlite3", dir=PROJECT_ROOT
-        )
-        os.close(file_descriptor)
-        self.database_path = Path(database_path)
-        with closing(sqlite3.connect(self.database_path)) as connection:
-            connection.executescript(ACCOUNTS_SCHEMA_PATH.read_text(encoding="utf-8"))
-        os.environ["SHOPPING_AUTH_DB"] = str(self.database_path)
+        self.test_accounts = {}
+
+        def register_account(email, password, full_name):
+            normalized_email = email.strip().lower()
+            self.test_accounts[normalized_email] = (password, full_name.strip())
+
+        def authenticate_account(email, password):
+            account = self.test_accounts.get(email.strip().lower())
+            if account is None or account[0] != password:
+                return None
+            return {
+                "email": email.strip().lower(),
+                "full_name": account[1],
+                "user_id": "USR-TEST",
+            }
+
+        self.auth_patches = [
+            patch("app.ui.auth.register_account", side_effect=register_account),
+            patch("app.ui.auth.authenticate_account", side_effect=authenticate_account),
+        ]
+        for auth_patch in self.auth_patches:
+            auth_patch.start()
         self.app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
 
     def tearDown(self) -> None:
-        if self.previous_auth_database is None:
-            os.environ.pop("SHOPPING_AUTH_DB", None)
-        else:
-            os.environ["SHOPPING_AUTH_DB"] = self.previous_auth_database
-        self.database_path.unlink(missing_ok=True)
+        for auth_patch in self.auth_patches:
+            auth_patch.stop()
 
     def _button(self, label: str):
         return next(button for button in self.app.button if button.label == label)
@@ -74,8 +80,27 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
             ["login-email", "login-password"],
         )
         self.assertIn(
-            "Login",
+            "Sign In",
             [button.label for button in self.app.form_submit_button],
+        )
+        self.assertIn(
+            "Forgot Password?",
+            [button.label for button in self.app.form_submit_button],
+        )
+        self.assertEqual(
+            self._text_input("login-email").placeholder,
+            "Enter your email address",
+        )
+        self.assertEqual(
+            self._text_input("login-password").placeholder,
+            "Enter your password",
+        )
+        self.assertTrue(
+            next(
+                checkbox
+                for checkbox in self.app.checkbox
+                if checkbox.key == "remember-me"
+            ).disabled
         )
         self._assert_no_shop()
 
@@ -114,7 +139,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
     def test_invalid_credentials_do_not_open_the_shop(self) -> None:
         self._text_input("login-email").set_value("unknown@example.com")
         self._text_input("login-password").set_value("incorrect-password")
-        self._submit("Login").click().run()
+        self._submit("Sign In").click().run()
 
         self.assertIn(
             "Invalid email or password.",
@@ -123,7 +148,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self._assert_no_shop()
 
     def test_create_account_then_verified_login_opens_authenticated_shop(self) -> None:
-        self._button("Create an account").click().run()
+        self._button("Create an Account").click().run()
         self.assertIn(
             "Create your account",
             [header.value for header in self.app.subheader],
@@ -143,7 +168,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
 
         self._text_input("login-email").set_value("demo@example.com")
         self._text_input("login-password").set_value("wrong-password")
-        self._submit("Login").click().run()
+        self._submit("Sign In").click().run()
         self.assertIn(
             "Invalid email or password.",
             [error.value for error in self.app.error],
@@ -152,7 +177,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
 
         self._text_input("login-email").set_value("demo@example.com")
         self._text_input("login-password").set_value("demo-password")
-        self._submit("Login").click().run()
+        self._submit("Sign In").click().run()
 
         self.assertTrue(
             any(item.value == "Shop by Category" for item in self.app.subheader)
@@ -162,7 +187,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         )
         self.assertEqual(
             self.app.menu_button(key="account-menu").options,
-            ["Profile", "Settings", "Logout"],
+            ["Profile", "Settings", "Addresses", "Orders", "Logout"],
         )
         self.app.menu_button(key="account-menu").click("Profile").run()
         self.assertIn("Your profile", [header.value for header in self.app.header])
@@ -191,6 +216,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         )
         self.assertNotIn("authenticated_email", self.app.session_state)
         self.assertNotIn("authenticated_name", self.app.session_state)
+        self.assertNotIn("authenticated_user_id", self.app.session_state)
         self.assertEqual(len(self.app.session_state["cart"]), 1)
         self.assertEqual(len(self.app.session_state["wishlist"]), 1)
         self.assertEqual(self.app.session_state["chat_messages"], chat_history)
@@ -271,24 +297,13 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         ).click().run()
 
         self.assertIn(
-            "Demo checkout",
+            "Checkout",
             [header.value for header in self.app.header],
         )
         self.assertTrue(
-            any("no order is saved" in element.value for element in self.app.warning)
+            any("Sign in to place an order." in element.value for element in self.app.error)
         )
-        next(
-            button
-            for button in self.app.button
-            if button.label == "Complete demo checkout"
-        ).click().run()
 
-        self.assertTrue(
-            any(
-                "No order was placed or stored" in element.value
-                for element in self.app.success
-            )
-        )
         self.assertEqual(len(self.app.session_state["cart"]), 1)
 
     def test_header_search_and_clear_filters_restore_the_catalog(self) -> None:
@@ -466,6 +481,65 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.assertIn('[data-testid="InputInstructions"]', style_source)
         self.assertFalse(self.app.exception)
 
+    def test_chat_product_details_stay_with_their_database_record(self) -> None:
+        self._button("Continue as Guest").click().run()
+        products_by_id = {
+            product["id"]: product
+            for search_term in ("mouse", "keyboard")
+            for product in find_products(search_term=search_term, limit=1000)
+        }
+        products = list(products_by_id.values())
+        self.assertTrue(products)
+        self.app.session_state["chat_messages"] = [
+            {
+                "role": "assistant",
+                "content": "Matching catalog products.",
+                "products": products,
+            }
+        ]
+        self.app.button(key="open-chat").click().run()
+
+        for product_index, product in enumerate(products):
+            with self.subTest(product_id=product["id"]):
+                card = self.app.get_by_key(
+                    f"chat-product-{product['id']}-message-0-product-{product_index}"
+                )
+                card_markdown = [element.value for element in card.markdown]
+                self.assertIn(f"**{product['name']}**", card_markdown)
+                self.assertIn(
+                    product["description"] or "No description available.",
+                    card_markdown,
+                )
+                self.assertTrue(
+                    any(
+                        f"Image of {product['name']} unavailable" in value
+                        for value in card_markdown
+                    )
+                )
+
+        self.assertFalse(self.app.exception)
+
+    def test_repeated_product_in_chat_history_uses_distinct_card_keys(self) -> None:
+        self._button("Continue as Guest").click().run()
+        product = find_products(search_term="mouse", limit=1)[0]
+        self.app.session_state["chat_messages"] = [
+            {"role": "assistant", "content": "First result.", "products": [product]},
+            {"role": "user", "content": "Show it again."},
+            {"role": "assistant", "content": "Here it is again.", "products": [product]},
+        ]
+
+        self.app.button(key="open-chat").click().run()
+
+        first_card = self.app.get_by_key(
+            f"chat-product-{product['id']}-message-0-product-0"
+        )
+        second_card = self.app.get_by_key(
+            f"chat-product-{product['id']}-message-2-product-0"
+        )
+        self.assertIn(f"**{product['name']}**", [item.value for item in first_card.markdown])
+        self.assertIn(f"**{product['name']}**", [item.value for item in second_card.markdown])
+        self.assertFalse(self.app.exception)
+
     def test_chat_popup_opens_and_closes_without_losing_conversation(self) -> None:
         self._button("Continue as Guest").click().run()
         history = [{"role": "user", "content": "Please keep this message."}]
@@ -487,7 +561,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.assertEqual(self.app.session_state["chat_messages"], history)
         self.assertFalse(self.app.exception)
 
-    def test_submitted_greeting_is_saved_rendered_once_across_rerun(self) -> None:
+    def test_submitted_greeting_uses_gemini_and_is_saved_once(self) -> None:
         self._button("Continue as Guest").click().run()
         self.app.button(key="open-chat").click().run()
         popup = self.app.get_by_key("chat-popup")
@@ -501,14 +575,12 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.assertEqual(
             [button.label for button in chat_form.form_submit_button], ["Send"]
         )
-        response = "Hello! What can I help you find today?"
-        agent = AsyncMock(return_value=response)
         fake_genai = SimpleNamespace(aio=_AsyncContext(SimpleNamespace()))
-
+        agent = AsyncMock(return_value="Gemini-generated greeting")
         with (
             patch.dict(os.environ, {"GEMINI_API_KEY": "unit-test-key"}),
             patch("app.agent.chat_runtime.respond", agent),
-            patch("google.genai.Client", return_value=fake_genai),
+            patch("google.genai.Client", return_value=fake_genai) as gemini_client,
         ):
             next(
                 widget
@@ -525,31 +597,55 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
             self.app.session_state["chat_messages"],
             [
                 {"role": "user", "content": "Hii"},
-                {"role": "assistant", "content": response, "products": []},
+                {
+                    "role": "assistant",
+                    "content": "Gemini-generated greeting",
+                    "products": [],
+                },
             ],
         )
         rendered = [item.value for item in self.app.markdown]
         self.assertTrue(any("Hii" in value for value in rendered))
-        self.assertTrue(any(response in value for value in rendered))
+        self.assertTrue(any("Gemini-generated greeting" in value for value in rendered))
         self.assertIsNone(self.app.session_state["chat_pending_reply"])
         self.assertFalse(self.app.session_state["chat_processing"])
         self.assertNotIn("pending", self.app.session_state["chat_messages"][1])
         self.assertEqual(self._text_input("chat-prompt").value, "")
         self.assertFalse(self._text_input("chat-prompt").disabled)
         self.assertFalse(self._submit("Send").disabled)
+        gemini_client.assert_called_once()
         agent.assert_awaited_once()
+        self.assertIsNotNone(agent.await_args.kwargs["session"])
 
         self.app.run()
         self.assertEqual(len(self.app.session_state["chat_messages"]), 2)
-        agent.assert_awaited_once()
+        gemini_client.assert_called_once()
+
+    def test_forgot_password_option_explains_recovery_is_not_configured(self) -> None:
+        self.assertTrue(
+            any(
+                button.label == "Forgot Password?"
+                for button in self.app.form_submit_button
+            )
+        )
+
+        self._submit("Forgot Password?").click().run()
+
+        self.assertTrue(
+            any(
+                "verified identity-recovery method" in message.value
+                for message in self.app.info
+            )
+        )
+        self._assert_no_shop()
 
     def test_three_consecutive_messages_receive_replies_in_the_same_submission(self) -> None:
         self._button("Continue as Guest").click().run()
         self.app.button(key="open-chat").click().run()
         messages_and_replies = [
-            ("Hello", "Reply to Hello"),
-            ("Hii", "Reply to Hii"),
-            ("Hello", "Second reply to Hello"),
+            ("How are you?", "Reply to How are you?"),
+            ("Thanks", "Reply to Thanks"),
+            ("What can you do?", "Second reply to What can you do?"),
         ]
         replies = iter(reply for _, reply in messages_and_replies)
 
@@ -652,7 +748,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
                 widget
                 for widget in self.app.text_input
                 if widget.label == "Message the shopping assistant"
-            ).set_value("Hello")
+            ).set_value("How are you?")
             next(
                 button
                 for button in self.app.form_submit_button
@@ -660,7 +756,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
             ).click().run()
 
         self.assertEqual(len(self.app.session_state["chat_messages"]), 2)
-        self.assertEqual(self.app.session_state["chat_messages"][0]["content"], "Hello")
+        self.assertEqual(self.app.session_state["chat_messages"][0]["content"], "How are you?")
         error_reply = self.app.session_state["chat_messages"][1]["content"]
         self.assertIn("timed out", error_reply)
         self.assertNotIn("private timeout detail", error_reply)
@@ -674,7 +770,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.assertFalse(self._submit("Send").disabled)
         agent.assert_awaited_once()
 
-    def test_slow_greeting_completes_and_clears_processing_state(self) -> None:
+    def test_slow_conversation_completes_and_clears_processing_state(self) -> None:
         self._button("Continue as Guest").click().run()
         self.app.button(key="open-chat").click().run()
 
@@ -689,21 +785,21 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
             patch("app.agent.chat_runtime.respond", agent),
             patch("google.genai.Client", return_value=fake_genai),
         ):
-            self._text_input("chat-prompt").set_value("Hello")
+            self._text_input("chat-prompt").set_value("How are you?")
             self._submit("Send").click().run()
 
         history = self.app.session_state["chat_messages"]
         self.assertEqual([item["role"] for item in history], ["user", "assistant"])
         self.assertEqual(history[1]["content"], "Hello! I'm ready to help.")
         rendered = [item.value for item in self.app.markdown]
-        self.assertTrue(any("Hello" in value for value in rendered))
+        self.assertTrue(any("How are you?" in value for value in rendered))
         self.assertTrue(any(history[1]["content"] in value for value in rendered))
         self.assertFalse(self.app.session_state["chat_processing"])
         self.assertIsNone(self.app.session_state["chat_pending_reply"])
         self.assertFalse(self._text_input("chat-prompt").disabled)
         agent.assert_awaited_once()
 
-    def test_api_failure_is_visible_and_the_next_greeting_succeeds(self) -> None:
+    def test_api_failure_is_visible_and_the_next_conversation_succeeds(self) -> None:
         self._button("Continue as Guest").click().run()
         self.app.button(key="open-chat").click().run()
         agent = AsyncMock(
@@ -718,7 +814,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
             patch("app.agent.chat_runtime.respond", agent),
             patch("google.genai.Client", return_value=fake_genai),
         ):
-            self._text_input("chat-prompt").set_value("Hello")
+            self._text_input("chat-prompt").set_value("How are you?")
             self._submit("Send").click().run()
 
             self.assertIn(
@@ -728,15 +824,15 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
             self.assertFalse(self.app.session_state["chat_processing"])
             self.assertFalse(self._text_input("chat-prompt").disabled)
 
-            self._text_input("chat-prompt").set_value("Hii")
+            self._text_input("chat-prompt").set_value("Thanks")
             self._submit("Send").click().run()
 
         history = self.app.session_state["chat_messages"]
         self.assertEqual(len(history), 4)
-        self.assertEqual(history[0]["content"], "Hello")
+        self.assertEqual(history[0]["content"], "How are you?")
         self.assertIn("too many requests", history[1]["content"])
         self.assertNotIn("private quota detail", history[1]["content"])
-        self.assertEqual(history[2]["content"], "Hii")
+        self.assertEqual(history[2]["content"], "Thanks")
         self.assertEqual(history[3]["content"], "Hello again!")
         self.assertFalse(self.app.session_state["chat_processing"])
         self.assertIsNone(self.app.session_state["chat_pending_reply"])

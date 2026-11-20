@@ -1,5 +1,8 @@
 import json
 import math
+import os
+import sys
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -27,11 +30,31 @@ async def call_mcp_tool(
     name: str,
     arguments: dict[str, Any],
 ) -> Any:
-    return await session.call_tool(
-        name,
-        arguments,
-        read_timeout_seconds=timedelta(seconds=PRODUCT_TOOL_TIMEOUT_SECONDS),
-    )
+    started_at = time.perf_counter()
+    outcome = "failed"
+    try:
+        result = await session.call_tool(
+            name,
+            arguments,
+            read_timeout_seconds=timedelta(seconds=PRODUCT_TOOL_TIMEOUT_SECONDS),
+        )
+        outcome = "completed"
+        return result
+    finally:
+        if os.getenv("SHOPWISE_CHAT_TIMING", "").strip().casefold() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            elapsed = time.perf_counter() - started_at
+            print(
+                "Shopwise chat timing "
+                f"stage=mcp_tool name={name} outcome={outcome} "
+                f"elapsed_seconds={elapsed:.3f}",
+                file=sys.stderr,
+                flush=True,
+            )
 
 
 def _gemini_tools(mcp_tools: list[Any]) -> list[dict[str, Any]]:
