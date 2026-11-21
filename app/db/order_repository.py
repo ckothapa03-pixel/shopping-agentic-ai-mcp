@@ -68,9 +68,14 @@ def get_order(user_id: str, order_id: int) -> dict[str, Any] | None:
 
 
 def cancel_order(user_id: str, order_id: int) -> dict[str, Any]:
-    ensure_active_user(user_id)
     with closing(get_writable_connection()) as connection:
         connection.execute("BEGIN IMMEDIATE")
+        active_user = connection.execute(
+            "SELECT user_id FROM users WHERE user_id=? AND is_active=1",
+            (user_id,),
+        ).fetchone()
+        if active_user is None:
+            raise PermissionError("The shopping identity is inactive or unavailable.")
         order = connection.execute(
             "SELECT id,status FROM orders WHERE id=? AND user_id=?",
             (order_id, user_id),

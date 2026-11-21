@@ -1,5 +1,5 @@
 import os
-import sys
+import logging
 import time
 from typing import Any, Callable
 
@@ -51,12 +51,10 @@ async def request_gemini_interaction(
             "1", "true", "yes", "on",
         }:
             elapsed = time.perf_counter() - started_at
-            print(
+            logging.getLogger("app.agent").debug(
                 "Shopwise chat timing "
                 f"stage=gemini_request request={request_number} "
-                f"outcome={outcome} elapsed_seconds={elapsed:.3f}",
-                file=sys.stderr,
-                flush=True,
+                f"outcome={outcome} elapsed_seconds={elapsed:.3f}"
             )
 
 

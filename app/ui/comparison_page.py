@@ -2,6 +2,7 @@ import sqlite3
 import streamlit as st
 
 from app.db.products import get_products_by_ids
+from app.ui.error_messages import safe_error_message
 
 
 def _render_comparison() -> None:
@@ -16,7 +17,7 @@ def _render_comparison() -> None:
             raise ValueError("Enter 2 to 4 unique product IDs.")
         products = get_products_by_ids(ids)
     except (ValueError, OSError, sqlite3.Error) as error:
-        st.error(str(error))
+        st.error(safe_error_message(error, "Products could not be compared.", event="comparison_load_failed", allow_value_error=True))
         return
     if len(products) != len(ids):
         st.error("One or more products could not be found.")

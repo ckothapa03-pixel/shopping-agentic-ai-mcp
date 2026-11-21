@@ -1,4 +1,5 @@
 import sqlite3
+import logging
 
 import streamlit as st
 
@@ -19,15 +20,18 @@ def _render_wishlist() -> None:
                 user_id = require_authenticated_user(st.session_state)
                 persistent_ids = {row["id"] for row in get_wishlist(user_id)}
                 st.session_state.wishlist.update(persistent_ids)
-            except (PermissionError, OSError, sqlite3.Error):
-                pass
+            except (PermissionError, OSError, sqlite3.Error) as error:
+                from app.observability import log_failure
+                log_failure("wishlist_load_failed", error, level=logging.WARNING)
         if not st.session_state.wishlist:
             st.write("No saved products yet.")
             return
 
     try:
         rows = get_products_by_ids(list(st.session_state.wishlist))
-    except (OSError, sqlite3.Error, ValueError):
+    except (OSError, sqlite3.Error, ValueError) as error:
+        from app.observability import log_failure
+        log_failure("wishlist_catalog_load_failed", error)
         st.error("The wishlist could not be loaded from the catalog.")
         return
 

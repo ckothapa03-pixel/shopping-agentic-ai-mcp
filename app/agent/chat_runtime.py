@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -21,7 +22,7 @@ def _record_chat_stage(
     stage: str,
     stage_elapsed_seconds: float | None = None,
 ) -> None:
-    """Print timing-only diagnostics when explicitly enabled for debugging."""
+    """Log timing-only diagnostics when explicitly enabled for debugging."""
     if os.getenv("SHOPWISE_CHAT_TIMING", "").strip().casefold() not in {
         "1",
         "true",
@@ -33,7 +34,7 @@ def _record_chat_stage(
     details = f"stage={stage} elapsed_seconds={elapsed:.3f}"
     if stage_elapsed_seconds is not None:
         details += f" stage_elapsed_seconds={stage_elapsed_seconds:.3f}"
-    print(f"Shopwise chat timing {details}", flush=True)
+    logging.getLogger("app.agent").debug("Shopwise chat timing %s", details)
 
 
 async def _respond_with_agent(

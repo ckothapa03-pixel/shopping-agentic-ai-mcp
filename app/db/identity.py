@@ -1,10 +1,9 @@
-import sqlite3
 import os
 from contextlib import closing
 from pathlib import Path
 from typing import TypedDict
 
-from app.db.database import DB_PATH
+from app.db.database import DB_PATH, connect_readonly
 
 
 def _account_database_path() -> Path:
@@ -42,12 +41,8 @@ def resolve_shopping_user(
     if not account_path.is_file():
         raise FileNotFoundError(f"Account database not found: {account_path}")
 
-    database_uri = f"{path.as_uri()}?mode=ro"
-    account_uri = f"{account_path.as_uri()}?mode=ro"
-    with closing(sqlite3.connect(database_uri, uri=True)) as connection:
-        connection.row_factory = sqlite3.Row
-        with closing(sqlite3.connect(account_uri, uri=True)) as account_connection:
-            account_connection.row_factory = sqlite3.Row
+    with closing(connect_readonly(path)) as connection:
+        with closing(connect_readonly(account_path)) as account_connection:
             mapping = account_connection.execute(
                 """
                 SELECT account_email, user_id
@@ -91,9 +86,7 @@ def resolve_shopping_user_by_id(
     if not path.is_file():
         raise FileNotFoundError(f"Database not found: {path}")
 
-    database_uri = f"{path.as_uri()}?mode=ro"
-    with closing(sqlite3.connect(database_uri, uri=True)) as connection:
-        connection.row_factory = sqlite3.Row
+    with closing(connect_readonly(path)) as connection:
         row = connection.execute(
             """
             SELECT user_id, full_name, email, is_active

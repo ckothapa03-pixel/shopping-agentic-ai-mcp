@@ -18,7 +18,7 @@ def ensure_active_user(user_id: str) -> None:
 
 def get_cart(user_id: str) -> list[dict[str, Any]]:
     ensure_active_user(user_id)
-    with closing(get_writable_connection()) as connection:
+    with closing(get_connection()) as connection:
         rows = connection.execute(
             "SELECT product_id, quantity FROM cart_items WHERE user_id=?",
             (user_id,),
@@ -76,7 +76,7 @@ def clear_cart(user_id: str) -> None:
 
 def get_wishlist(user_id: str) -> list[dict[str, Any]]:
     ensure_active_user(user_id)
-    with closing(get_writable_connection()) as connection:
+    with closing(get_connection()) as connection:
         rows = connection.execute(
             "SELECT product_id FROM wishlists WHERE user_id=? ORDER BY added_at",
             (user_id,),

@@ -1,10 +1,9 @@
 import sqlite3
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 import app.db.database as database
+from tests.database_fixture import isolated_database_path
 from app.rag.retrieval import ingest_document, retrieve_chunks
 from app.shopping.recommendations import recommend_products
 
@@ -12,10 +11,8 @@ from app.shopping.recommendations import recommend_products
 class RAGRecommendationTests(unittest.TestCase):
     def setUp(self) -> None:
         original_db_path = database.DB_PATH
-        temporary_directory = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary_directory.cleanup)
         self.addCleanup(setattr, database, "DB_PATH", original_db_path)
-        self.db = Path(temporary_directory.name) / "shopping.db"
+        self.db = isolated_database_path(self, suffix=".db")
         connection = sqlite3.connect(self.db)
         connection.executescript(
             """

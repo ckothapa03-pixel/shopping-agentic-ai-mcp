@@ -1,6 +1,6 @@
 import sqlite3
 import unittest
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
 from uuid import uuid4
@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 from app.shopping import authentication
 from app.shopping.authentication import authenticate_account, register_account
+from app.db.schema import validate_account_schema
+from tests.database_fixture import create_shopwise_databases
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_COLUMNS = {
     "email",
     "full_name",
@@ -140,25 +141,22 @@ class AccountAuthenticationTests(unittest.TestCase):
                     "correct-horse",
                     "Demo Shopper",
                 )
-            with self.assertRaisesRegex(ValueError, "at least 8"):
+            with self.assertRaisesRegex(ValueError, "between 12"):
                 register_account("new@example.com", "short", "Demo Shopper")
+            with self.assertRaisesRegex(ValueError, "between 12"):
+                register_account("new@example.com", "12345678901", "Demo Shopper")
 
-    def test_existing_accounts_database_has_the_expected_columns(self) -> None:
-        database_path = PROJECT_ROOT / "accounts.sqlite3"
-        self.assertTrue(database_path.is_file())
-        database_uri = f"{database_path.resolve().as_uri()}?mode=ro"
-        with closing(sqlite3.connect(database_uri, uri=True)) as connection:
-            tables = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-            self.assertIn("accounts", tables)
+    def test_account_schema_validation_uses_an_isolated_database(self) -> None:
+        _shopping_db, account_db = create_shopwise_databases(self)
+        with patch("app.db.schema._account_database_path", return_value=account_db):
+            validate_account_schema()
+        connection = sqlite3.connect(account_db)
+        try:
             columns = {
-                row[1]
-                for row in connection.execute("PRAGMA table_info(accounts)")
+                row[1] for row in connection.execute("PRAGMA table_info(accounts)")
             }
+        finally:
+            connection.close()
         self.assertEqual(columns, EXPECTED_COLUMNS)
 
     def test_authentication_does_not_create_a_missing_database(self) -> None:

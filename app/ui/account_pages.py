@@ -7,6 +7,8 @@ from app.shopping.authentication import (
     get_account_profile,
     update_account_profile,
 )
+from app.shopping.identity import prepare_login_session
+from app.ui.error_messages import safe_error_message
 
 def _render_profile() -> None:
     st.header("Your profile")
@@ -40,7 +42,7 @@ def _render_profile() -> None:
             try:
                 updated = update_account_profile(email, full_name)
             except (OSError, sqlite3.Error, ValueError) as error:
-                st.error(str(error))
+                st.error(safe_error_message(error, "Your profile could not be updated.", event="profile_update_failed", allow_value_error=True))
             else:
                 st.session_state.authenticated_name = updated["full_name"]
                 st.success("Profile updated.")
@@ -75,9 +77,13 @@ def _render_profile() -> None:
                         new_password,
                     )
                 except (OSError, sqlite3.Error, ValueError) as error:
-                    st.error(str(error))
+                    st.error(safe_error_message(error, "Your password could not be changed.", event="password_change_failed", allow_value_error=True))
                 else:
-                    st.success("Password changed.")
+                    prepare_login_session(st.session_state)
+                    st.session_state.auth_notice = (
+                        "Password changed. Sign in again with your new password."
+                    )
+                    st.rerun()
 
     if st.button("Back to shopping", icon=":material/storefront:"):
         st.session_state.store_page = "shop"

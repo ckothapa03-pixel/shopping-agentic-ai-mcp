@@ -2,7 +2,7 @@ import re
 from contextlib import closing
 from typing import Any
 
-from app.db.database import get_writable_connection
+from app.db.database import get_connection, get_writable_connection
 
 
 def ingest_document(source_name: str, document_type: str, content: str) -> int:
@@ -26,7 +26,7 @@ def ingest_document(source_name: str, document_type: str, content: str) -> int:
             chunks.append(paragraph)
 
     with closing(get_writable_connection()) as connection:
-        connection.execute("BEGIN")
+        connection.execute("BEGIN IMMEDIATE")
         connection.execute(
             """
             INSERT INTO rag_documents (source_name, document_type, content)
@@ -67,7 +67,7 @@ def retrieve_chunks(query: str, limit: int = 5) -> list[dict[str, Any]]:
     terms = [term.casefold() for term in re.findall(r"[a-z0-9]+", query) if len(term) >= 3]
     if not terms:
         return []
-    with closing(get_writable_connection()) as connection:
+    with closing(get_connection()) as connection:
         rows = connection.execute(
             """
             SELECT d.source_name,d.document_type,c.chunk_text

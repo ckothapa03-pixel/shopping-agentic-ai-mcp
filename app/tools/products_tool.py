@@ -1,5 +1,5 @@
 import os
-import sys
+import logging
 import time
 
 from app.db.products import find_products
@@ -38,10 +38,8 @@ def search_products(
             "on",
         }:
             elapsed = time.perf_counter() - started_at
-            print(
+            logging.getLogger("app.tools").debug(
                 "Shopwise chat timing "
                 f"stage=sqlite_product_search outcome={outcome} "
-                f"elapsed_seconds={elapsed:.3f}",
-                file=sys.stderr,
-                flush=True,
+                f"elapsed_seconds={elapsed:.3f}"
             )

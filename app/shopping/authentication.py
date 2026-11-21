@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import os
 import re
 import secrets
@@ -9,9 +10,19 @@ from pathlib import Path
 from typing import Generator, TypedDict
 
 from app.db.identity import resolve_shopping_user
+from app.db.database import connect_writable
+from app.shopping.login_protection import (
+    clear_login_failures,
+    login_allowed,
+    record_login_failure,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PASSWORD_ITERATIONS = 600_000
+MIN_PASSWORD_LENGTH = 12
+MAX_PASSWORD_LENGTH = 1024
+_DUMMY_PASSWORD_SALT = b"shopwise-invalid-account-salt"
+_AUTH_LOG = logging.getLogger("app.authentication")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -35,9 +46,7 @@ def _connect(db_path: Path | str | None) -> sqlite3.Connection:
         raise FileNotFoundError(
             f"Account database not found: {path}. Provide an existing accounts.sqlite3 database."
         )
-    connection = sqlite3.connect(f"{path.as_uri()}?mode=rw", uri=True)
-    connection.row_factory = sqlite3.Row
-    return connection
+    return connect_writable(path)
 
 
 @contextmanager
@@ -61,8 +70,10 @@ def _validated_credentials(email: str, password: str) -> tuple[str, str]:
     normalized_email = email.strip().lower()
     if not EMAIL_PATTERN.fullmatch(normalized_email):
         raise ValueError("Enter a valid email address.")
-    if not isinstance(password, str) or len(password) < 8:
-        raise ValueError("Password must be at least 8 characters.")
+    if not isinstance(password, str) or not MIN_PASSWORD_LENGTH <= len(password) <= MAX_PASSWORD_LENGTH:
+        raise ValueError(
+            f"Password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters."
+        )
     return normalized_email, password
 
 
@@ -105,6 +116,7 @@ def register_account(
             )
     except sqlite3.IntegrityError as error:
         raise ValueError("An account with that email already exists.") from error
+    _AUTH_LOG.info("event=account_registered")
     return {
         "email": normalized_email,
         "full_name": full_name.strip(),
@@ -119,9 +131,19 @@ def authenticate_account(
     shopping_db_path: Path | str | None = None,
 ) -> Account | None:
     if not isinstance(email, str) or not isinstance(password, str):
+        _AUTH_LOG.warning("event=login_failed reason=invalid_input")
         return None
     normalized_email = email.strip().lower()
+    if not login_allowed(normalized_email):
+        _AUTH_LOG.warning("event=login_failed reason=throttled")
+        return None
+    if len(password) > MAX_PASSWORD_LENGTH:
+        record_login_failure(normalized_email)
+        _AUTH_LOG.warning("event=login_failed reason=invalid_credentials")
+        return None
     if not EMAIL_PATTERN.fullmatch(normalized_email):
+        record_login_failure(normalized_email)
+        _AUTH_LOG.warning("event=login_failed reason=invalid_credentials")
         return None
 
     with _account_connection(db_path) as connection:
@@ -135,6 +157,11 @@ def authenticate_account(
         ).fetchone()
 
     if account is None:
+        hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), _DUMMY_PASSWORD_SALT, PASSWORD_ITERATIONS
+        )
+        record_login_failure(normalized_email)
+        _AUTH_LOG.warning("event=login_failed reason=invalid_credentials")
         return None
 
     candidate_hash = hashlib.pbkdf2_hmac(
@@ -144,6 +171,8 @@ def authenticate_account(
         PASSWORD_ITERATIONS,
     )
     if not hmac.compare_digest(candidate_hash, account["password_hash"]):
+        record_login_failure(normalized_email)
+        _AUTH_LOG.warning("event=login_failed reason=invalid_credentials")
         return None
 
     shopping_user = resolve_shopping_user(
@@ -152,7 +181,12 @@ def authenticate_account(
         account_db_path=db_path,
     )
     if shopping_user is None:
+        record_login_failure(normalized_email)
+        _AUTH_LOG.warning("event=login_failed reason=invalid_credentials")
         return None
+
+    clear_login_failures(normalized_email)
+    _AUTH_LOG.info("event=login_succeeded")
 
     return {
         "email": account["email"],
@@ -229,6 +263,7 @@ def update_account_profile(
         )
         if cursor.rowcount != 1:
             raise ValueError("Account was not found.")
+    _AUTH_LOG.info("event=password_changed")
 
     return {
         "email": normalized_email,
@@ -248,8 +283,10 @@ def change_account_password(
     normalized_email = email.strip().lower()
     if not EMAIL_PATTERN.fullmatch(normalized_email):
         raise ValueError("Enter a valid email address.")
-    if not isinstance(new_password, str) or len(new_password) < 8:
-        raise ValueError("New password must be at least 8 characters.")
+    if not isinstance(new_password, str) or not MIN_PASSWORD_LENGTH <= len(new_password) <= MAX_PASSWORD_LENGTH:
+        raise ValueError(
+            f"New password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters."
+        )
 
     with _account_connection(db_path) as connection:
         account = connection.execute(

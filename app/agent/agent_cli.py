@@ -1,6 +1,6 @@
 import asyncio
+import logging
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -11,6 +11,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from app.agent.agent import respond
+from app.observability import configure_logging, log_failure
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -56,17 +57,19 @@ async def chat() -> None:
                             conversation_history=conversation_history,
                         )
                     except Exception as error:
-                        message = str(error).replace(api_key, "[REDACTED]")
-                        message = re.sub(
-                            r"(?i)(?:AIza[0-9A-Za-z_-]{20,}|Bearer\s+\S+)",
-                            "[REDACTED]",
-                            message,
-                        )
-                        print(
-                            f"\nAssistant error ({type(error).__name__}): {message}"
-                        )
+                        log_failure("cli_assistant_request_failed", error)
+                        print("\nThe assistant could not complete this request. Please try again.")
                         continue
                     print(f"\nAssistant: {answer}")
 
+async def main() -> None:
+    configure_logging()
+    try:
+        await chat()
+    except Exception as error:
+        log_failure("cli_startup_failed", error)
+        print("The shopping assistant could not start. Check its configuration and try again.")
+
+
 if __name__ == "__main__":
-    asyncio.run(chat())
+    asyncio.run(main())

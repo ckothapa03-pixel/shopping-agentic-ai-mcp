@@ -12,6 +12,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from app.agent.agent import _needs_budget_clarification, respond
+from tests.database_fixture import create_shopwise_databases
 
 
 class _TrackedLoader:
@@ -417,7 +418,7 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
         )
 
         loader = _TrackedLoader()
-        with self.assertRaisesRegex(RuntimeError, "database unavailable"):
+        with self.assertRaisesRegex(RuntimeError, "could not complete") as caught:
             await respond(
                 session,
                 client,
@@ -426,6 +427,7 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
                 product_search_loader=loader,
             )
         self.assertEqual((loader.entered, loader.exited, loader.active), (1, 1, False))
+        self.assertNotIn("database unavailable", str(caught.exception))
 
     async def test_detects_missing_budget_and_requests_only_the_amount(self) -> None:
         user_story = (
@@ -506,10 +508,14 @@ class ShoppingAgentTests(unittest.IsolatedAsyncioTestCase):
             )
         )
         project_root = Path(__file__).resolve().parent.parent
+        isolated_shopping_db, _isolated_accounts_db = create_shopwise_databases(self)
+        server_environment = os.environ.copy()
+        server_environment["SHOPWISE_DB_PATH"] = str(isolated_shopping_db)
         server_parameters = StdioServerParameters(
             command=sys.executable,
             args=["-m", "app.mcp.mcp_server"],
             cwd=str(project_root),
+            env=server_environment,
         )
 
         async with stdio_client(server_parameters) as (read_stream, write_stream):

@@ -1,4 +1,5 @@
 import sqlite3
+import logging
 
 import streamlit as st
 
@@ -17,6 +18,7 @@ from app.ui.orders_page import _render_orders
 from app.ui.order_detail_page import _render_order_detail
 from app.ui.comparison_page import _render_comparison
 from app.db.user_data import get_cart, set_cart_quantity
+from app.observability import configure_logging, log_failure
 
 def _render_login_screen() -> None:
     render_login_screen()
@@ -25,12 +27,14 @@ def _inject_store_styles() -> None:
     render_store_styles()
 
 def main() -> None:
+    configure_logging()
     st.set_page_config(page_title="Shopwise", page_icon="🛍️", layout="wide")
     try:
         validate_shopping_schema()
         validate_account_schema()
     except (OSError, sqlite3.Error, RuntimeError) as error:
-        st.error(str(error))
+        log_failure("startup_schema_validation_failed", error)
+        st.error("Shopwise could not connect to its data store. Please try again later.")
         return
 
     if st.session_state.get("access_mode") not in {"guest", "authenticated"}:
@@ -75,14 +79,16 @@ def main() -> None:
                     set_cart_quantity(user_id, product_id, quantity)
                 st.session_state.cart = merged_cart
                 st.session_state["_cart_synced_user_id"] = user_id
-            except (PermissionError, OSError, sqlite3.Error):
+            except (PermissionError, OSError, sqlite3.Error) as error:
+                log_failure("cart_sync_failed", error, level=logging.WARNING)
                 st.session_state["_cart_synced_user_id"] = None
 
     _render_store_header()
 
     try:
         facets = catalog_ui.load_catalog_facets()
-    except (OSError, sqlite3.Error):
+    except (OSError, sqlite3.Error) as error:
+        log_failure("catalog_facets_load_failed", error)
         st.error("Shopwise could not load product categories. Please try again.")
         return
 

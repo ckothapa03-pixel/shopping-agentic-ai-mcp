@@ -3,6 +3,7 @@ import streamlit as st
 
 from app.db.order_repository import list_orders
 from app.shopping.identity import require_authenticated_user
+from app.ui.error_messages import safe_error_message
 
 
 def _render_orders() -> None:
@@ -12,7 +13,7 @@ def _render_orders() -> None:
         status = st.selectbox("Status", ["All", "PLACED", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"])
         orders = list_orders(user_id, None if status == "All" else status)
     except (PermissionError, OSError, sqlite3.Error, ValueError) as error:
-        st.error(str(error))
+        st.error(safe_error_message(error, "Your orders could not be loaded.", event="orders_load_failed"))
         return
     if not orders:
         st.info("No orders found.")

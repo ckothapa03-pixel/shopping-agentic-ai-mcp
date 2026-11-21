@@ -1,5 +1,9 @@
 import streamlit as st
 from app.ui import catalog as catalog_ui
+from app.shopping.identity import (
+    clear_authenticated_session,
+    prepare_login_session,
+)
 
 def _return_to_homepage() -> None:
     st.session_state.store_page = "shop"
@@ -7,14 +11,11 @@ def _return_to_homepage() -> None:
     st.session_state.catalog_page = 1
 
 def _start_login() -> None:
-    st.session_state.pop("access_mode", None)
+    prepare_login_session(st.session_state)
     st.session_state.auth_view = "login"
 
 def _logout_to_guest() -> None:
-    st.session_state.access_mode = "guest"
-    st.session_state.pop("authenticated_email", None)
-    st.session_state.pop("authenticated_name", None)
-    st.session_state.pop("authenticated_user_id", None)
+    clear_authenticated_session(st.session_state)
     st.session_state.pop("auth_notice", None)
     st.session_state.auth_view = "login"
     st.session_state.store_page = "shop"

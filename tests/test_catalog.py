@@ -6,14 +6,19 @@ from app.db.products import (
     get_catalog_facets,
     get_products_by_ids,
 )
+import app.db.database as database
+from tests.database_fixture import create_shopwise_databases
 
 
 class ProductCatalogTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.catalog = find_products(limit=1000)
-        if not cls.catalog:
-            raise AssertionError("The existing product catalog is empty")
+    def setUp(self) -> None:
+        original_db_path = database.DB_PATH
+        self.addCleanup(setattr, database, "DB_PATH", original_db_path)
+        self.shopping_db, _account_db = create_shopwise_databases(self)
+        database.DB_PATH = self.shopping_db
+        self.catalog = find_products(limit=1000)
+        if not self.catalog:
+            raise AssertionError("The isolated fixture catalog is empty")
 
     def test_search_returns_matching_catalog_products(self) -> None:
         product = self.catalog[0]
@@ -94,7 +99,7 @@ class ProductCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "between 0 and 5"):
             find_products(min_rating=5.1)
 
-    def test_catalog_facets_and_fresh_product_lookup_use_real_rows(self) -> None:
+    def test_catalog_facets_and_fresh_product_lookup_use_fixture_rows(self) -> None:
         facets = get_catalog_facets()
         product = self.catalog[0]
 

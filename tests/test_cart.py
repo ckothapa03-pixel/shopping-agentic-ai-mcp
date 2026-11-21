@@ -59,6 +59,12 @@ class ShoppingCartTests(unittest.TestCase):
 
         self.assertEqual(cart_total({7: 3, 8: 1}, products), 0.5)
 
+    def test_currency_totals_round_unit_prices_to_cents_half_up(self) -> None:
+        self.assertEqual(
+            cart_total({7: 2}, {7: {"id": 7, "price": 0.005, "stock": 2}}),
+            0.02,
+        )
+
     def test_checkout_requires_a_non_empty_cart_and_current_valid_stock(self) -> None:
         with self.assertRaisesRegex(ValueError, "cart is empty"):
             validate_checkout({}, {})

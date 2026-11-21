@@ -22,6 +22,10 @@ from app.agent.recommendations import (
     format_product_results,
     needs_budget_clarification,
 )
+from app.agent.tool_permissions import (
+    ToolPermissionDenied,
+    require_autonomous_permission,
+)
 
 __all__ = [
     "DEFAULT_GEMINI_TIMEOUT_SECONDS",
@@ -114,6 +118,24 @@ async def respond(
                 )
                 conversation_history[:] = history
             return answer
+        try:
+            for function_call in function_calls:
+                require_autonomous_permission(function_call.name)
+        except ToolPermissionDenied as error:
+            if conversation_history is not None:
+                conversation_history.extend(
+                    [
+                        {
+                            "type": "user_input",
+                            "content": [{"type": "text", "text": user_message}],
+                        },
+                        {
+                            "type": "model_output",
+                            "content": [{"type": "text", "text": str(error)}],
+                        },
+                    ]
+                )
+            return str(error)
         if round_number == max_tool_rounds:
             raise RuntimeError(
                 f"Assistant exceeded the limit of {max_tool_rounds} tool-call rounds"
@@ -132,15 +154,20 @@ async def respond(
                 else nullcontext()
             )
             with search_context:
-                result = await call_mcp_tool(
-                    session,
-                    function_call.name,
-                    arguments,
-                )
+                try:
+                    result = await call_mcp_tool(
+                        session,
+                        function_call.name,
+                        arguments,
+                    )
+                    result_text = _tool_result_text(result)
+                except ToolPermissionDenied as error:
+                    result = None
+                    result_text = str(error)
             if function_call.name == "search_products":
                 if product_search_performed is not None:
                     product_search_performed.append(True)
-                products = _product_rows(result)
+                products = _product_rows(result) if result is not None else None
                 if products is not None:
                     if product_results is not None:
                         product_results.extend(products)
@@ -151,7 +178,7 @@ async def respond(
                 "type": "function_result",
                 "call_id": function_call.id,
                 "name": function_call.name,
-                "result": _tool_result_text(result),
+                "result": result_text,
             }
             function_responses.append(function_response)
 

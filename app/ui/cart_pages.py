@@ -1,5 +1,4 @@
 import sqlite3
-from decimal import Decimal
 
 import streamlit as st
 
@@ -8,6 +7,8 @@ from app.ui.catalog import _load_cart_products
 from app.shopping.identity import require_authenticated_user
 from app.db.user_data import remove_cart_item, set_cart_quantity
 from app.db.user_data import clear_cart
+from app.ui.error_messages import safe_error_message
+from app.shopping.money import money
 
 def _render_cart() -> None:
     st.header("Your shopping cart")
@@ -45,7 +46,7 @@ def _render_cart() -> None:
             item_columns = st.columns([3, 1.2, 1, 1], vertical_alignment="center")
             item_columns[0].markdown(f"**{product['name']}**")
             item_columns[0].caption(
-                f"₹{product['price']:,.2f} each · "
+                f"₹{money(product['price']):,.2f} each · "
                 f"{product.get('brand') or '—'}"
             )
 
@@ -83,7 +84,7 @@ def _render_cart() -> None:
                         st.session_state.demo_checkout_complete = False
                         st.rerun()
                     except ValueError as error:
-                        st.error(str(error))
+                        st.error(safe_error_message(error, "The cart item could not be removed.", event="cart_remove_failed"))
 
             if item_columns[3].button(
                 "Remove",
@@ -94,7 +95,7 @@ def _render_cart() -> None:
                         user_id = require_authenticated_user(st.session_state)
                         remove_cart_item(user_id, product_id)
                     except (PermissionError, OSError, sqlite3.Error) as error:
-                        st.error(str(error))
+                        st.error(safe_error_message(error, "The cart item could not be updated.", event="cart_quantity_update_failed", allow_value_error=True))
                         return
                 st.session_state.cart = remove_from_cart(
                     st.session_state.cart, product_id
@@ -103,7 +104,7 @@ def _render_cart() -> None:
                 st.rerun()
 
             if product["stock"] > 0 and quantity <= product["stock"]:
-                line_total = Decimal(str(product["price"])) * quantity
+                line_total = money(money(product["price"]) * quantity)
                 st.caption(f"Line total: ₹{line_total:,.2f}")
             elif product["stock"] > 0:
                 st.warning(
@@ -135,7 +136,7 @@ def _render_cart() -> None:
                 try:
                     clear_cart(require_authenticated_user(st.session_state))
                 except (PermissionError, OSError, sqlite3.Error) as error:
-                    st.error(str(error))
+                    st.error(safe_error_message(error, "The cart could not be cleared.", event="cart_clear_failed"))
                     return
             st.session_state.cart = {}
             st.session_state.demo_checkout_complete = False

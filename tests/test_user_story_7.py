@@ -2,14 +2,19 @@ import unittest
 
 from app.db.products import find_products
 from app.tools.products_tool import search_products
+import app.db.database as database
+from tests.database_fixture import create_shopwise_databases
 
 
 class ProductBudgetSearchTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.products = find_products(limit=1000)
-        if not cls.products:
-            raise AssertionError("The existing product database has no products")
+    def setUp(self) -> None:
+        original_db_path = database.DB_PATH
+        self.addCleanup(setattr, database, "DB_PATH", original_db_path)
+        self.shopping_db, _account_db = create_shopwise_databases(self)
+        database.DB_PATH = self.shopping_db
+        self.products = find_products(limit=1000)
+        if not self.products:
+            raise AssertionError("The isolated product fixture has no products")
 
     def test_products_are_within_budget_and_more_expensive_products_are_excluded(
         self,
@@ -45,7 +50,7 @@ class ProductBudgetSearchTests(unittest.TestCase):
         in_stock = [
             product for product in self.products if product["stock"] > 0
         ]
-        self.assertTrue(in_stock, "The product database has no in-stock products")
+        self.assertTrue(in_stock, "The product fixture has no in-stock products")
         target = max(in_stock, key=lambda product: product["rating_avg"])
 
         results = search_products(

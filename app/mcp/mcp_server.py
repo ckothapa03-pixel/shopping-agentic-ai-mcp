@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from app.agent.tool_permissions import require_explicit_confirmation
 
 PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 if PROJECT_ROOT not in sys.path:
@@ -108,6 +109,7 @@ def get_similar_products(product_id: int, limit: int = 6) -> list[dict]:
 @mcp.tool()
 def add_to_cart(product_id: int, quantity: int = 1) -> dict:
     user_id = _require_mcp_user()
+    require_explicit_confirmation("add_to_cart")
     set_cart_quantity(user_id, product_id, quantity)
     return {"cart": get_cart(user_id)}
 
@@ -119,19 +121,25 @@ def view_cart() -> list[dict]:
 
 @mcp.tool()
 def update_cart_quantity(product_id: int, quantity: int) -> dict:
-    set_cart_quantity(_require_mcp_user(), product_id, quantity)
-    return {"cart": get_cart(_require_mcp_user())}
+    user_id = _require_mcp_user()
+    require_explicit_confirmation("update_cart_quantity")
+    set_cart_quantity(user_id, product_id, quantity)
+    return {"cart": get_cart(user_id)}
 
 
 @mcp.tool()
 def remove_from_cart(product_id: int) -> dict:
-    remove_cart_item(_require_mcp_user(), product_id)
-    return {"cart": get_cart(_require_mcp_user())}
+    user_id = _require_mcp_user()
+    require_explicit_confirmation("remove_from_cart")
+    remove_cart_item(user_id, product_id)
+    return {"cart": get_cart(user_id)}
 
 
 @mcp.tool()
 def clear_cart() -> dict:
-    clear_cart_from_db(_require_mcp_user())
+    user_id = _require_mcp_user()
+    require_explicit_confirmation("clear_cart")
+    clear_cart_from_db(user_id)
     return {"cart": []}
 
 
@@ -142,8 +150,10 @@ def view_wishlist() -> list[dict]:
 
 @mcp.tool()
 def set_wishlist(product_id: int, saved: bool) -> dict:
-    set_wishlist_from_db(_require_mcp_user(), product_id, saved)
-    return {"wishlist": get_wishlist(_require_mcp_user())}
+    user_id = _require_mcp_user()
+    require_explicit_confirmation("set_wishlist")
+    set_wishlist_from_db(user_id, product_id, saved)
+    return {"wishlist": get_wishlist(user_id)}
 
 
 @mcp.tool()
@@ -171,13 +181,17 @@ def track_order(order_id: int) -> dict:
 
 @mcp.tool()
 def create_checkout_order(address_id: int, payment_method: str = "COD", coupon_code: str | None = None) -> dict:
-    return create_order(_require_mcp_user(), address_id, payment_method, coupon_code)
+    user_id = _require_mcp_user()
+    require_explicit_confirmation("create_checkout_order")
+    return create_order(user_id, address_id, payment_method, coupon_code)
 
 
 @mcp.tool()
 def cancel_order(order_id: int) -> dict:
     from app.db.order_repository import cancel_order as cancel_owned_order
-    detail = cancel_owned_order(_require_mcp_user(), order_id)
+    user_id = _require_mcp_user()
+    require_explicit_confirmation("cancel_order")
+    detail = cancel_owned_order(user_id, order_id)
     return detail
 
 
@@ -201,4 +215,8 @@ def search_policies(query: str, limit: int = 5) -> list[dict]:
 
 
 if __name__ == "__main__":
+    from app.observability import configure_logging
+    configure_logging()
+    import logging
+    logging.getLogger("app.mcp").info("event=mcp_server_started")
     mcp.run()

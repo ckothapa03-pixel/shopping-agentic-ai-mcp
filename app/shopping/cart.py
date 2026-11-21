@@ -1,7 +1,8 @@
 from collections.abc import Mapping
-import math
 from decimal import Decimal
 from typing import Any
+
+from app.shopping.money import money
 
 
 def _product_id_and_stock(product: Mapping[str, Any]) -> tuple[int, int]:
@@ -65,16 +66,17 @@ def cart_total(
         if product is None:
             raise ValueError(f"Product {product_id} is unavailable")
         price = product.get("price")
-        if (
-            isinstance(price, bool)
-            or not isinstance(price, (int, float))
-            or not math.isfinite(price)
-            or price < 0
-        ):
+        if isinstance(price, bool) or not isinstance(price, (int, float, Decimal)):
+            raise ValueError(f"Product {product_id} has an invalid price")
+        try:
+            unit_price = money(price)
+        except ValueError as error:
+            raise ValueError(f"Product {product_id} has an invalid price") from error
+        if unit_price < 0:
             raise ValueError(f"Product {product_id} has an invalid price")
         _validate_quantity(quantity, product["stock"])
-        total += Decimal(str(price)) * quantity
-    return float(total)
+        total += unit_price * quantity
+    return float(money(total))
 
 
 def validate_checkout(

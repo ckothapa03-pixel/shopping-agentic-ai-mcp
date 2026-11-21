@@ -1,4 +1,5 @@
 import html
+import logging
 import sqlite3
 from typing import Any
 
@@ -6,6 +7,8 @@ import streamlit as st
 
 from app.shopping.cart import add_to_cart
 from app.db.products import get_products_by_ids
+from app.observability import log_failure
+from app.ui.error_messages import safe_error_message
 from app.db.user_data import (
     set_cart_quantity,
     set_wishlist as persist_wishlist,
@@ -202,8 +205,9 @@ def _render_product(
                 st.toast(f"Added {product['name']} to your cart.")
                 st.rerun()
             except ValueError as error:
-                st.error(str(error))
-            except (OSError, sqlite3.Error):
+                st.error(safe_error_message(error, "The cart could not be updated.", event="cart_update_failed", allow_value_error=True))
+            except (OSError, sqlite3.Error) as error:
+                log_failure("product_cart_update_failed", error, level=logging.ERROR)
                 st.error("The current product availability could not be checked.")
         if wishlist_button:
             if is_saved:

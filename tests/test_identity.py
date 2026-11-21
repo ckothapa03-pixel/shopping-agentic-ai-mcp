@@ -1,7 +1,5 @@
 import sqlite3
-import tempfile
 import unittest
-from pathlib import Path
 
 from app.db.identity import (
     resolve_shopping_user,
@@ -15,18 +13,19 @@ from app.shopping.authentication import (
     update_account_profile,
 )
 from app.shopping.identity import (
+    clear_authenticated_session,
+    enter_guest_session,
     ensure_resource_owner,
+    prepare_login_session,
     require_authenticated_user,
 )
+from tests.database_fixture import isolated_database_path
 
 
 class IdentityFoundationTests(unittest.TestCase):
     def setUp(self) -> None:
-        temporary_directory = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary_directory.cleanup)
-        root = Path(temporary_directory.name)
-        self.shopping_db = root / "shopping.db"
-        self.account_db = root / "accounts.sqlite3"
+        self.shopping_db = isolated_database_path(self, suffix=".db")
+        self.account_db = isolated_database_path(self)
 
         shopping_connection = sqlite3.connect(self.shopping_db)
         try:
@@ -252,6 +251,53 @@ class IdentityFoundationTests(unittest.TestCase):
         ensure_resource_owner("USR-100", "USR-100")
         with self.assertRaises(PermissionError):
             ensure_resource_owner("USR-200", "USR-100")
+
+    def test_logout_and_account_switch_clear_private_session_data(self) -> None:
+        session = {
+            "access_mode": "authenticated",
+            "authenticated_email": "shopper@example.com",
+            "authenticated_user_id": "USR-100",
+            "cart": {7: 2},
+            "wishlist": {8},
+            "chat_messages": [{"role": "assistant", "content": "private"}],
+            "agent_history": ["private"],
+        }
+        clear_authenticated_session(session)
+        self.assertEqual(session["access_mode"], "guest")
+        self.assertNotIn("authenticated_user_id", session)
+        self.assertEqual(session["cart"], {})
+        self.assertEqual(session["wishlist"], set())
+        self.assertEqual(session["chat_messages"], [])
+        self.assertEqual(session["agent_history"], [])
+
+        session.update(
+            access_mode="authenticated",
+            authenticated_user_id="USR-100",
+            cart={9: 1},
+            wishlist={10},
+        )
+        prepare_login_session(session)
+        self.assertNotIn("authenticated_user_id", session)
+        self.assertNotIn("access_mode", session)
+        self.assertEqual(session["cart"], {})
+        self.assertEqual(session["wishlist"], set())
+
+    def test_guest_login_transition_removes_stale_identity_but_keeps_guest_cart(self) -> None:
+        session = {
+            "access_mode": "guest",
+            "authenticated_user_id": "USR-OLD",
+            "cart": {3: 1},
+            "wishlist": {4},
+            "agent_history": ["guest context"],
+        }
+        prepare_login_session(session)
+        self.assertNotIn("authenticated_user_id", session)
+        self.assertEqual(session["cart"], {3: 1})
+        self.assertEqual(session["wishlist"], {4})
+        self.assertEqual(session["agent_history"], [])
+
+        enter_guest_session(session)
+        self.assertEqual(session["access_mode"], "guest")
 
 
 if __name__ == "__main__":

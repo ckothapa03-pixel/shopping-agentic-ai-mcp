@@ -1,220 +1,90 @@
-# Agentic AI Shopping Project
+# Shopwise Agentic AI Shopping
 
-This project includes an AI shopping assistant connected to the local MCP
-product-search server:
+Shopwise is a Streamlit shopping application backed by existing SQLite databases. Its optional Gemini shopping assistant uses a local FastMCP server for catalog tools.
 
-Shopper
-        |
-        v
-AI Agent (Gemini)
-        |
-        v
-MCP Server / search_products()
-        |
-        v
-products_tool.py
-        |
-        v
-products.py
-        |
-        v
-shopping.db (SQLite)
+## Architecture and features
 
-## 1. Create virtual environment
+- `app/ui/` contains the Streamlit pages and chat interface.
+- `app/shopping/` contains authentication, shopping rules, checkout confirmation, and money handling.
+- `app/db/` contains SQLite connections, schema validation, and repositories.
+- `app/agent/` connects Gemini to the permission-filtered MCP tools.
+- `app/mcp/` exposes the tools through FastMCP over stdio.
+- `app/tools/` contains the catalog search adapter; `app/rag/` contains optional local document retrieval.
 
-Windows PowerShell:
+The catalog, cart, wishlist, addresses, and orders use the existing database layer. Guest cart and wishlist state is session-only. Authenticated accounts are linked to active shopper records through `identity_mappings`; the app does not create missing databases or schemas. Checkout revalidates the cart, coupon, prices, and stock before creating an order. Payment is limited to the application's configured COD flow; there is no external payment processor.
+
+Gemini receives only the approved autonomous read-only catalog tools. User-specific, mutating, and consequential MCP operations are protected by application authorization and confirmation policy.
+
+## Requirements and installation
+
+Use Python 3.11 or newer. Create a virtual environment from the project root:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-## 2. Install dependencies
-
-```powershell
 python -m pip install -r requirements.txt
 ```
 
-Python 3.10 or newer is required. The project keeps its existing
-`mcp[cli]==1.30.0` pin.
+The direct dependencies are pinned in `requirements.txt`, including the MCP version. Transitive packages are resolved by pip; the repository does not currently maintain a platform-specific full lock file.
 
-## 3. Put `shopping.db` in the project root
+## Databases
 
-The structure must be:
+The application requires existing `shopping.db` and `accounts.sqlite3` files with the tables and columns checked by the read-only startup validator. Supply databases provisioned for the application; startup and tests do not create, migrate, or seed them. Keep private database files outside source control. `.gitignore` excludes both database names, `.env` files, virtual environments, Python caches, and Streamlit secrets.
 
-```text
-agentic-ai-project/
-├── app/
-├── shopping.db
-├── main.py
-├── examples/
-│   └── demo_product_search.py
-├── tests/
-│   └── ...
-├── requirements.txt
-└── .env
-```
-
-## Verify the existing accounts database
-
-The application uses the existing `accounts.sqlite3` database. To check that it
-and the `accounts` table have the expected columns without modifying anything,
-run this read-only verification command from the project root:
+Startup verifies the required tables and columns without exposing records. To run the same read-only readiness validation from the project root:
 
 ```powershell
-python scripts\setup_accounts_db.py
+python -c "from app.db.schema import validate_shopping_schema, validate_account_schema; validate_shopping_schema(); validate_account_schema(); print('Database readiness checks passed')"
 ```
 
-This command does not create or change databases, tables, columns, or records.
+For a non-default shopping database, set `SHOPWISE_DB_PATH` to its absolute path before starting the app. Set `SHOPPING_AUTH_DB` to override the accounts database path. Both files must already exist.
 
-## 4. Test the database first
+## Configuration and secrets
+
+AI chat is optional; browsing and basic application startup do not need a Gemini key. For local AI chat, copy `.env.example` to `.env` and set `GEMINI_API_KEY`. The application loads this file for the chat/agent flow. In deployments, provide secrets through the host's secret environment configuration instead of committing `.env`.
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | Gemini API credential; needed only for AI chat | Unset |
+| `GEMINI_MODEL` | Gemini model name | `gemini-3.8-flash` |
+| `GEMINI_TIMEOUT_SECONDS` | Request timeout, accepted range 5–300 seconds | `90` |
+| `SHOPWISE_DB_PATH` | Absolute path to the existing shopping database | Project-root `shopping.db` |
+| `SHOPPING_AUTH_DB` | Path to the existing accounts database | Project-root `accounts.sqlite3` |
+| `SHOPWISE_LOG_LEVEL` | Python logging level | `INFO` |
+| `SHOPWISE_CHAT_TIMING` | Enable timing diagnostics when set to `1` | Disabled |
+
+Do not put credentials, database records, or real customer information in source files, CI variables, or test fixtures.
+
+## Run the application
+
+From the project root, start the Streamlit UI:
 
 ```powershell
-python examples\demo_product_search.py
+python -m streamlit run app\ui\web_app.py
 ```
 
-You should see products from the real `shopping.db`. This is a demonstration
-script, not an automated test.
+The startup validator checks both database files before rendering the login screen. Users can browse as guests; account-only data and order flows require an authenticated identity. Account registration expects an active, already-linked shopper record. Password recovery and external payment processing are not configured.
 
-## 5. Test through MCP Inspector
+The Gemini client starts the FastMCP server as a local stdio subprocess when a chat request needs tools. The application supplies authenticated context to that process; do not launch a server with a user ID supplied by an untrusted caller. For standalone MCP inspection, use the MCP Inspector with `python -m app.mcp.mcp_server` as its command and arguments. Do not type ordinary text into the MCP server's protocol terminal.
 
-From the project root in PowerShell, start the Inspector with the project
-virtual environment:
+## Tests and CI
+
+Run all automated tests and the compilation check locally:
 
 ```powershell
-$python = (Resolve-Path ..\.venv\Scripts\python.exe).Path
-npx -y @modelcontextprotocol/inspector $python -m app.mcp.mcp_server
-```
-
-The Inspector is fetched through `npx`; this does not change project
-dependencies or upgrade MCP. Open the Inspector URL printed by the command and
-connect to **Shopping Assistant**.
-
-Then find the tool:
-
-```text
-search_products
-```
-
-Try:
-
-```text
-search_term = mouse
-max_price = 1000
-min_rating = 4
-in_stock = true
-limit = 20
-```
-
-The returned data comes from `shopping.db`; `limit` controls the maximum number
-of returned products.
-
-## Important
-
-Do not run:
-
-```powershell
-python -m app.mcp.mcp_server
-```
-
-and then type normal text into that terminal. MCP uses its communication protocol on stdin/stdout.
-
-For MCP testing, use the Inspector command from section 5.
-
-## Run the AI assistant
-
-Create a `.env` file in the project root (it is excluded from version control)
-and add your Gemini API key:
-
-```text
-GEMINI_API_KEY=replace-with-your-gemini-api-key
-GEMINI_MODEL=gemini-3.8-flash
-```
-
-Replace the placeholder with your key from Google AI Studio. Never commit the
-real key.
-
-Start the assistant from the project root:
-
-```powershell
-& ..\.venv\Scripts\python.exe -m app.agent.agent_cli
-```
-
-The Gemini-powered agent starts the MCP server over stdio, discovers its
-available tools, and lets Gemini call `search_products` as needed. Type `exit`
-to quit. The model can be changed with `GEMINI_MODEL`; the API key must never be
-committed.
-
-For a budget search, you can enter the user story without an amount:
-
-```text
-As a shopper, I want to search for products within my budget so that I can find affordable products easily.
-```
-
-The agent asks for your maximum budget in rupees. Enter the amount (for example,
-`1000`) in your next message. Gemini uses the conversation context to call
-`search_products` with that amount as `max_price`. The agent displays product
-rows returned by the catalog with name, price, rating, stock availability,
-brand, and category. These details come from the MCP tool and `shopping.db`, not
-generated product claims.
-
-## Run the shopping website
-
-From the project root, use the existing virtual environment in the parent
-folder to start Streamlit:
-
-```powershell
-& ..\.venv\Scripts\python.exe -m streamlit run app\ui\web_app.py
-```
-
-Replace the example path with the current project folder. The first screen is
-login; select **Continue as Guest** to browse without registering. Search,
-categories, brands, price bounds, customer ratings, stock, sorting, and grid or
-list layouts use the real catalog rows in `shopping.db`. The cart and saved
-products are available from the top-right controls. The floating Shopwise AI
-button opens the Gemini/MCP product-search assistant.
-
-Account registration stores salted password hashes in the ignored
-`accounts.sqlite3`, separate from `shopping.db`. Existing shopper rows in the
-catalog database have no password credentials and cannot be used to sign in.
-This local demo flow is not production identity management; it has no password
-reset or login rate limiting. The website does not read or display customer or
-order records from `shopping.db`.
-
-### Demonstration behavior and limitations
-
-- Cart and wishlist data are temporary to the current browser session for
-  guests and signed-in demo accounts. The app does not read or write the
-  database `cart_items` table.
-- **Demo checkout** rechecks current product availability, stock, and price,
-  then calculates totals from catalog data. It does not save an order or charge
-  a payment method. Real order creation is not available because the demo
-  account store is separate from the existing users, address, and order data.
-- `shopping.db` has no image field and no product image assets are supplied;
-  product cards use a neutral image-unavailable placeholder.
-- Orders are not shown in the navigation because account-to-order ownership is
-  not integrated.
-- AI chat requires a usable Gemini key and network access. It reuses the
-  existing Gemini agent and MCP `search_products` path; failures are reported
-  without claiming an unverified search succeeded.
-- No database schema migration or record changes are required.
-
-Keep `.env` private and do not use real account credentials for this local
-demonstration. The command-line agent can be started with the command shown
-above from the project root.
-
-## Run tests
-
-```powershell
+python -m compileall -q app tests
 python -m unittest discover -s tests -v
 ```
 
-This runs the agent, catalog, cart/checkout, authentication, grounded-chat,
-and login/guest/navigation tests. The agent budget-flow test uses a
-deterministic model fixture while starting the real MCP server and querying
-`shopping.db`; it does not require a Gemini API key. `examples/demo_product_search.py`
-is an optional demonstration script that prints product data, not an automated
-test.
+Tests use isolated temporary SQLite fixtures. The MCP subprocess test also points the child server at its temporary fixture using `SHOPWISE_DB_PATH`; the suite does not need the local databases or a Gemini API key. `tests/test_gemini.py` is a manual live-API diagnostic and is not part of `unittest` discovery; it requires network access and a Gemini key, and should not be used with secrets in shared logs.
 
-The MCP server remains independently runnable through the MCP Inspector steps
-above.
+GitHub Actions runs the compilation check and complete unittest suite on pushes to `main` and pull requests targeting `main`. It installs the pinned direct dependencies on Python 3.11 and does not configure API secrets or use production databases. The workflow is `.github/workflows/tests.yml`.
+
+## Deployment considerations and limitations
+
+- Keep both database files on durable storage with restrictive file permissions. Streamlit startup requires them to exist and match the expected schema.
+- SQLite is suited to this local/small deployment model. Writes serialize, and the application waits up to five seconds for a busy database; sustained concurrent write traffic may still fail. Use a single application instance with local persistent storage. Network filesystems, ephemeral disks, and horizontally scaled replicas are not a supported production database/session setup.
+- Streamlit session state and login throttling are process-local. The throttle is best-effort and resets on process restart; it is not a distributed rate limiter. Multiple workers or replicas need shared session and throttling infrastructure.
+- Configure Gemini credentials through a secret manager/environment variable, restrict their access, and monitor API usage. AI chat depends on external network and Gemini availability.
+- Establish tested, access-controlled backups and a recovery procedure for both SQLite files. Do not copy live database files without a consistent SQLite backup method.
+- This repository does not include a deployment platform, container setup, payment provider, email-based account recovery, distributed session store, or production identity provider. Passing CI is not a production-readiness certification.

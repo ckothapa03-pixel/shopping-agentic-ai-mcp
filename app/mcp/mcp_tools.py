@@ -1,10 +1,13 @@
 import json
+import logging
 import math
 import os
-import sys
 import time
 from datetime import timedelta
 from typing import Any
+
+from app.agent.tool_permissions import require_autonomous_permission
+from app.observability import log_failure
 
 PRODUCT_TOOL_TIMEOUT_SECONDS = 30
 
@@ -30,6 +33,7 @@ async def call_mcp_tool(
     name: str,
     arguments: dict[str, Any],
 ) -> Any:
+    require_autonomous_permission(name)
     started_at = time.perf_counter()
     outcome = "failed"
     try:
@@ -48,25 +52,17 @@ async def call_mcp_tool(
             "on",
         }:
             elapsed = time.perf_counter() - started_at
-            print(
+            logging.getLogger("app.mcp").debug(
                 "Shopwise chat timing "
                 f"stage=mcp_tool name={name} outcome={outcome} "
-                f"elapsed_seconds={elapsed:.3f}",
-                file=sys.stderr,
-                flush=True,
+                f"elapsed_seconds={elapsed:.3f}"
             )
 
 
 def _gemini_tools(mcp_tools: list[Any]) -> list[dict[str, Any]]:
-    return [
-        {
-            "type": "function",
-            "name": tool.name,
-            "description": tool.description or "",
-            "parameters": tool.inputSchema,
-        }
-        for tool in mcp_tools
-    ]
+    from app.agent.tool_permissions import filter_autonomous_tools
+
+    return filter_autonomous_tools(mcp_tools)
 
 def _function_calls(interaction: Any) -> list[Any]:
     return [
@@ -77,10 +73,9 @@ def _function_calls(interaction: Any) -> list[Any]:
 
 def _tool_result_text(result: Any) -> str:
     if result.isError:
-        details = "\n".join(
-            block.text for block in result.content if hasattr(block, "text")
-        )
-        raise RuntimeError(f"MCP tool call failed: {details or 'unknown error'}")
+        error = RuntimeError("MCP tool call failed")
+        log_failure("mcp_tool_failed", error)
+        raise RuntimeError("The shopping assistant could not complete this request.") from None
 
     structured_content = getattr(result, "structuredContent", None)
     if structured_content is not None:

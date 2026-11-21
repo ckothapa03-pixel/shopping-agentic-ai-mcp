@@ -7,6 +7,7 @@ from app.db.address_repository import (
     list_addresses,
 )
 from app.shopping.identity import require_authenticated_user
+from app.ui.error_messages import safe_error_message
 
 
 def _render_addresses() -> None:
@@ -15,7 +16,7 @@ def _render_addresses() -> None:
         user_id = require_authenticated_user(st.session_state)
         addresses = list_addresses(user_id)
     except (PermissionError, OSError, sqlite3.Error) as error:
-        st.error(str(error))
+        st.error(safe_error_message(error, "Addresses could not be loaded.", event="addresses_load_failed"))
         return
 
     for address in addresses:
@@ -28,7 +29,7 @@ def _render_addresses() -> None:
                     delete_address(user_id, address["id"])
                     st.rerun()
                 except (PermissionError, sqlite3.Error, OSError) as error:
-                    st.error(str(error))
+                    st.error(safe_error_message(error, "The address could not be deleted.", event="address_delete_failed"))
 
     with st.expander("Add address"):
         with st.form("add-address-form"):
@@ -45,4 +46,4 @@ def _render_addresses() -> None:
                 st.success("Address saved.")
                 st.rerun()
             except (ValueError, PermissionError, sqlite3.Error, OSError) as error:
-                st.error(str(error))
+                st.error(safe_error_message(error, "The address could not be saved.", event="address_save_failed", allow_value_error=True))

@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, patch
 
 from google.genai.errors import ClientError
 from app.db.products import count_products, find_products, get_catalog_facets
+import app.db.database as database
 from streamlit.testing.v1 import AppTest
+from tests.database_fixture import create_shopwise_databases
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = Path(__file__).resolve().parent.parent / "app" / "ui" / "web_app.py"
@@ -26,6 +28,18 @@ class _AsyncContext:
 
 class ShoppingAccessNavigationTests(unittest.TestCase):
     def setUp(self) -> None:
+        original_db_path = database.DB_PATH
+        self.addCleanup(setattr, database, "DB_PATH", original_db_path)
+        self.shopping_db, self.account_db = create_shopwise_databases(self)
+        database.DB_PATH = self.shopping_db
+        schema_path = patch("app.db.schema.DB_PATH", self.shopping_db)
+        schema_path.start()
+        self.addCleanup(schema_path.stop)
+        account_path = patch.dict(
+            "os.environ", {"SHOPPING_AUTH_DB": str(self.account_db)}
+        )
+        account_path.start()
+        self.addCleanup(account_path.stop)
         self.test_accounts = {}
 
         def register_account(email, password, full_name):
@@ -45,6 +59,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.auth_patches = [
             patch("app.ui.auth.register_account", side_effect=register_account),
             patch("app.ui.auth.authenticate_account", side_effect=authenticate_account),
+            patch("app.ui.account_pages.get_account_profile", return_value=None),
         ]
         for auth_patch in self.auth_patches:
             auth_patch.start()
@@ -147,6 +162,41 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         )
         self._assert_no_shop()
 
+    def test_password_change_requires_a_fresh_login(self) -> None:
+        self.app.session_state["access_mode"] = "authenticated"
+        self.app.session_state["authenticated_email"] = "demo@example.com"
+        self.app.session_state["authenticated_name"] = "Demo Shopper"
+        self.app.session_state["authenticated_user_id"] = "USR-TEST"
+        with patch(
+            "app.ui.account_pages.get_account_profile",
+            return_value={
+                "email": "demo@example.com",
+                "full_name": "Demo Shopper",
+                "user_id": "USR-TEST",
+            },
+        ):
+            self.app.run()
+            self.app.menu_button(key="account-menu").click("Profile").run()
+            for label, value in (
+                ("Current password", "demo-password"),
+                ("New password", "a-new-secure-password"),
+                ("Confirm new password", "a-new-secure-password"),
+            ):
+                next(item for item in self.app.text_input if item.label == label).set_value(value)
+            with patch("app.ui.account_pages.change_account_password") as change_password:
+                self._button("Change password").click().run()
+
+        change_password.assert_called_once_with(
+            "demo@example.com", "demo-password", "a-new-secure-password"
+        )
+        self.assertNotIn("access_mode", self.app.session_state)
+        self.assertNotIn("authenticated_user_id", self.app.session_state)
+        self.assertIn(
+            "Password changed. Sign in again with your new password.",
+            [item.value for item in self.app.success],
+        )
+        self.assertIn("Sign In", [button.label for button in self.app.form_submit_button])
+
     def test_create_account_then_verified_login_opens_authenticated_shop(self) -> None:
         self._button("Create an Account").click().run()
         self.assertIn(
@@ -206,8 +256,9 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.assertEqual(self.app.session_state["catalog_layout_preference"], "List")
         next(button for button in self.app.button if button.label == "Add to cart").click().run()
         next(button for button in self.app.button if button.label == "Save").click().run()
-        chat_history = [{"role": "user", "content": "Keep chat after logout."}]
-        self.app.session_state["chat_messages"] = chat_history.copy()
+        self.app.session_state["chat_messages"] = [
+            {"role": "user", "content": "Private chat before logout."}
+        ]
         self.app.menu_button(key="account-menu").click("Logout").run()
         self.assertEqual(self.app.session_state["access_mode"], "guest")
         self.assertEqual(
@@ -217,9 +268,10 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.assertNotIn("authenticated_email", self.app.session_state)
         self.assertNotIn("authenticated_name", self.app.session_state)
         self.assertNotIn("authenticated_user_id", self.app.session_state)
-        self.assertEqual(len(self.app.session_state["cart"]), 1)
-        self.assertEqual(len(self.app.session_state["wishlist"]), 1)
-        self.assertEqual(self.app.session_state["chat_messages"], chat_history)
+        self.assertEqual(self.app.session_state["cart"], {})
+        self.assertEqual(self.app.session_state["wishlist"], set())
+        self.assertEqual(self.app.session_state["chat_messages"], [])
+        self.assertEqual(self.app.session_state["agent_history"], [])
 
     def test_logo_returns_to_home_and_preserves_shopping_and_chat_state(self) -> None:
         self._button("Continue as Guest").click().run()
@@ -360,7 +412,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
             any("No products match" in item.value for item in self.app.info)
         )
 
-    def test_homepage_categories_use_real_catalog_values(self) -> None:
+    def test_homepage_categories_use_isolated_catalog_values(self) -> None:
         self._button("Continue as Guest").click().run()
 
         categories = get_catalog_facets()["categories"]

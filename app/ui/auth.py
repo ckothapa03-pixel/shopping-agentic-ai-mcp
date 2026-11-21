@@ -3,7 +3,9 @@ import sqlite3
 import streamlit as st
 
 from app.shopping.authentication import authenticate_account, register_account
+from app.shopping.identity import clear_chat_session, enter_guest_session
 from app.ui.styles import render_login_styles
+from app.ui.error_messages import safe_error_message
 
 
 def render_login_screen() -> None:
@@ -35,7 +37,7 @@ def render_login_screen() -> None:
                 full_name = st.text_input("Full name", key="register-name")
                 email = st.text_input("Email", key="register-email")
                 password = st.text_input(
-                    "Password (at least 8 characters)",
+                    "Password (at least 12 characters)",
                     type="password",
                     key="register-password",
                 )
@@ -57,8 +59,8 @@ def render_login_screen() -> None:
                         register_account(email, password, full_name)
                     except ValueError as error:
                         st.error(str(error))
-                    except (OSError, sqlite3.Error):
-                        st.error("Account storage is unavailable. Try again.")
+                    except (OSError, sqlite3.Error) as error:
+                        st.error(safe_error_message(error, "Account storage is unavailable. Try again.", event="account_registration_failed"))
                     else:
                         st.session_state.auth_view = "login"
                         st.session_state.auth_notice = (
@@ -122,12 +124,13 @@ def render_login_screen() -> None:
         if login:
             try:
                 account = authenticate_account(email, password)
-            except (OSError, sqlite3.Error):
-                st.error("Account storage is unavailable. Try again.")
+            except (OSError, sqlite3.Error) as error:
+                st.error(safe_error_message(error, "Account storage is unavailable. Try again.", event="login_storage_failed"))
             else:
                 if account is None:
                     st.error("Invalid email or password.")
                 else:
+                    clear_chat_session(st.session_state)
                     st.session_state.access_mode = "authenticated"
                     st.session_state.authenticated_email = account["email"]
                     st.session_state.authenticated_name = account["full_name"]
@@ -144,7 +147,7 @@ def render_login_screen() -> None:
             width="stretch",
             key="continue-as-guest",
         ):
-            st.session_state.access_mode = "guest"
+            enter_guest_session(st.session_state)
             st.rerun()
         st.markdown(
             '<p class="login-create-prompt">Don\'t have an account?</p>',
