@@ -47,15 +47,16 @@ def main() -> None:
         if existing_email is not None:
             raise RuntimeError("A shopping user already owns this email.")
 
-        accounts.execute(
+        mapping_table = accounts.execute(
             """
-            CREATE TABLE IF NOT EXISTS identity_mappings (
-                account_email TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='identity_mappings'
+            """
+        ).fetchone()
+        if mapping_table is None:
+            raise RuntimeError(
+                "Required table identity_mappings was not found in accounts.sqlite3."
             )
-            """
-        )
 
         existing_mapping = accounts.execute(
             "SELECT user_id FROM identity_mappings WHERE LOWER(account_email) = LOWER(?)",
@@ -83,11 +84,6 @@ def main() -> None:
             VALUES (?, ?)
             """,
             (ACCOUNT_EMAIL.lower(), NEW_USER_ID),
-        )
-
-        shopping.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email_nocase "
-            "ON users (LOWER(email))"
         )
 
         shopping.commit()

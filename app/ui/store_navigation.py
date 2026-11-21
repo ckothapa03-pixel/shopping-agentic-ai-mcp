@@ -25,7 +25,7 @@ def _render_store_header() -> None:
 
     with st.container(key="store-header"):
         with st.container(key="store-header-row"):
-            header = st.columns([1.6, 5.2, 3.2], vertical_alignment="center")
+            header = st.columns([150, 1, 330], gap="small", vertical_alignment="center")
 
             with header[0]:
                 st.button(
@@ -38,14 +38,14 @@ def _render_store_header() -> None:
                 )
 
             with header[1]:
-                with st.form("catalog-search-form", border=False):
+                with st.form(key="catalog-search-form", border=False):
                     search_columns = st.columns(
-                        [4.5, 1.5],
+                        [1, 112],
                         vertical_alignment="center",
                     )
                     query = search_columns[0].text_input(
                         "Search the catalog",
-                        placeholder="Search for products, brands or categories...",
+                        placeholder="Search for products, brands, or categories...",
                         key="catalog_search_input",
                         label_visibility="collapsed",
                     )
@@ -64,7 +64,7 @@ def _render_store_header() -> None:
 
             with header[2]:
                 actions = st.columns(
-                    [1, 1, 1.05],
+                    [1, 1, 1],
                     vertical_alignment="center",
                 )
                 account_action = actions[0].menu_button(
@@ -89,12 +89,13 @@ def _render_store_header() -> None:
                             help=f"Open wishlist · {wishlist_count} saved products",
                             width="stretch",
                         )
-                        st.markdown(
-                            '<span class="store-count-badge" '
-                            f'aria-label="{wishlist_count} saved products">'
-                            f"{wishlist_count}</span>",
-                            unsafe_allow_html=True,
-                        )
+                        if wishlist_count > 0:
+                            st.markdown(
+                                '<span class="store-count-badge" '
+                                f'aria-label="{wishlist_count} saved products">'
+                                f"{wishlist_count}</span>",
+                                unsafe_allow_html=True,
+                            )
 
                 if wishlist_clicked:
                     st.session_state.store_page = "wishlist"
@@ -108,12 +109,13 @@ def _render_store_header() -> None:
                             help=f"Open cart · {cart_count} items",
                             width="stretch",
                         )
-                        st.markdown(
-                            '<span class="store-count-badge" '
-                            f'aria-label="{cart_count} cart items">'
-                            f"{cart_count}</span>",
-                            unsafe_allow_html=True,
-                        )
+                        if cart_count > 0:
+                            st.markdown(
+                                '<span class="store-count-badge" '
+                                f'aria-label="{cart_count} cart items">'
+                                f"{cart_count}</span>",
+                                unsafe_allow_html=True,
+                            )
 
                 if cart_clicked:
                     st.session_state.store_page = "cart"

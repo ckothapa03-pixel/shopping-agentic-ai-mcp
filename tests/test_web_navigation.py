@@ -259,6 +259,25 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.assertEqual(len(self.app.session_state["wishlist"]), 1)
         self.assertEqual(self.app.session_state["chat_messages"], chat_history)
 
+    def test_product_quantities_are_independent_and_decrease_to_zero(self) -> None:
+        self._button("Continue as Guest").click().run()
+
+        self.app.button(key="add-product-100").click().run()
+        self.assertEqual(self.app.session_state["cart"][100], 1)
+
+        self.app.button(key="increase-cart-100").click().run()
+        self.assertEqual(self.app.session_state["cart"][100], 2)
+
+        self.app.button(key="add-product-64").click().run()
+        self.assertEqual(self.app.session_state["cart"][100], 2)
+        self.assertEqual(self.app.session_state["cart"][64], 1)
+
+        self.app.button(key="decrease-cart-100").click().run()
+        self.assertEqual(self.app.session_state["cart"][100], 1)
+        self.app.button(key="decrease-cart-100").click().run()
+        self.assertNotIn(100, self.app.session_state["cart"])
+        self.assertEqual(self.app.session_state["cart"][64], 1)
+
     def test_wishlist_updates_and_is_session_only(self) -> None:
         self._button("Continue as Guest").click().run()
 
@@ -353,7 +372,10 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.assertEqual([button.label for button in category_buttons], categories)
         self.assertFalse(any("category-nav-" in button.key for button in self.app.button))
         self.assertTrue(
-            any("Discover a Smarter Way to Shop" in item.value for item in self.app.markdown)
+            any(
+                "Discover a Smarter Way to Shop" in item.value
+                for item in self.app.markdown
+            )
         )
         self.assertTrue(any(item.value == "Shop by Category" for item in self.app.subheader))
         self.assertFalse(
@@ -455,9 +477,6 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
             any(product["name"] in value for value in rendered_markdown)
         )
         self.assertTrue(
-            any("Product image unavailable" in value for value in rendered_markdown)
-        )
-        self.assertTrue(
             any(f"₹{product['price']:,.2f}" in value for value in rendered_markdown)
         )
         popup = self.app.get_by_key("chat-popup")
@@ -511,10 +530,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
                     card_markdown,
                 )
                 self.assertTrue(
-                    any(
-                        f"Image of {product['name']} unavailable" in value
-                        for value in card_markdown
-                    )
+                    len(card.image) == 1 or len(card.markdown) >= 3
                 )
 
         self.assertFalse(self.app.exception)

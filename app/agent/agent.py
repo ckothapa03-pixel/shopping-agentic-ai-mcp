@@ -1,5 +1,4 @@
 import asyncio
-import re
 from contextlib import nullcontext
 from typing import Any, Callable, ContextManager
 
@@ -18,6 +17,11 @@ from app.mcp.mcp_tools import (
     _tool_result_text,
     _validate_tool_arguments,
 )
+from app.agent.recommendations import (
+    BUDGET_CLARIFICATION,
+    format_product_results,
+    needs_budget_clarification,
+)
 
 __all__ = [
     "DEFAULT_GEMINI_TIMEOUT_SECONDS",
@@ -27,50 +31,8 @@ __all__ = [
     "respond",
 ]
 
-_BUDGET_INTENT = re.compile(r"\b(?:budget|afford\w*)\b", re.IGNORECASE)
-
-_BUDGET_AMOUNT = re.compile(
-    r"(?:₹|rs\.?|inr)\s*\d"
-    r"|\b(?:budget|afford\w*)\D{0,24}\d"
-    r"|\b(?:under|below|up to|less than|maximum|max)\D{0,12}\d",
-    re.IGNORECASE,
-)
-
-_BUDGET_CLARIFICATION = "What is your maximum budget in rupees?"
-
 def _needs_budget_clarification(message: str) -> bool:
-    return bool(
-        _BUDGET_INTENT.search(message) and not _BUDGET_AMOUNT.search(message)
-    )
-
-def _format_product_results(products: list[dict[str, Any]]) -> str:
-    if not products:
-        return "Catalog results from shopping.db:\nNo matching products found."
-
-    lines = ["Catalog results from shopping.db:"]
-    for product in products:
-        price = product.get("price")
-        price_text = (
-            f"₹{price:,.2f}"
-            if isinstance(price, (int, float)) and not isinstance(price, bool)
-            else "unavailable"
-        )
-        rating = product.get("rating_avg")
-        rating_text = f"{rating}/5" if rating is not None else "unrated"
-        stock = product.get("stock")
-        availability = (
-            f"In stock ({stock})"
-            if isinstance(stock, (int, float)) and stock > 0
-            else "Out of stock"
-        )
-        brand = product.get("brand") or "—"
-        category = product.get("category") or "—"
-        lines.append(
-            f"- {product.get('name') or 'Unnamed product'} | {price_text} | "
-            f"Rating: {rating_text} | {availability} | "
-            f"Brand: {brand} | Category: {category}"
-        )
-    return "\n".join(lines)
+    return needs_budget_clarification(message)
 
 async def respond(
     session: Any,
@@ -100,12 +62,12 @@ async def respond(
                     {
                         "type": "model_output",
                         "content": [
-                            {"type": "text", "text": _BUDGET_CLARIFICATION}
+                            {"type": "text", "text": BUDGET_CLARIFICATION}
                         ],
                     },
                 ]
             )
-        return _BUDGET_CLARIFICATION
+        return BUDGET_CLARIFICATION
 
     if on_stage is not None:
         on_stage("mcp_tool_discovery_started")
@@ -183,7 +145,7 @@ async def respond(
                     if product_results is not None:
                         product_results.extend(products)
                     product_result_sections.append(
-                        _format_product_results(products)
+                        format_product_results(products)
                     )
             function_response = {
                 "type": "function_result",

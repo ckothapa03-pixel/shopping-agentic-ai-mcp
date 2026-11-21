@@ -2,6 +2,7 @@ import html
 from typing import Any
 
 import streamlit as st
+from app.ui.product_images import get_product_image_path
 
 def _render_chat_product(product: dict[str, Any], render_key: str) -> None:
     """Render product facts supplied by the database-backed MCP search."""
@@ -32,12 +33,19 @@ def _render_chat_product(product: dict[str, Any], render_key: str) -> None:
         border=True,
         key=f"chat-product-{product.get('id', name)}-{render_key}",
     ):
-        st.markdown(
-            '<div class="product-image-placeholder" role="img" '
-            f'aria-label="Image of {name} unavailable">'
-            '<span aria-hidden="true">Product image unavailable</span></div>',
-            unsafe_allow_html=True,
-        )
+        image_path = get_product_image_path(product)
+        if image_path is not None:
+            st.image(str(image_path), width="stretch")
+        else:
+            st.markdown(
+                '<div class="product-image-fallback" role="img" '
+                f'aria-label="Category illustration for {name}">'
+                '<span class="product-fallback-icon" aria-hidden="true">'
+                '<span class="product-fallback-box"></span>'
+                '</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
         st.markdown(f"**{name}**")
         st.markdown(f"**{price_text}** · ★ {rating_text}")
         st.caption(

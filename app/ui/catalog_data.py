@@ -53,4 +53,8 @@ def load_catalog_price_bounds() -> tuple[float, float] | None:
 @st.cache_data(ttl=60)
 def load_featured_products() -> list[dict[str, Any]]:
     """Return a small selection of actual catalog products for the home page."""
-    return find_products(sort_by="highest_rated", limit=6)
+    from app.db.products import get_products_by_ids
+    featured_ids = [100, 64, 81, 80, 53, 60]
+    products = get_products_by_ids(featured_ids)
+    by_id = {product["id"]: product for product in products}
+    return [by_id[product_id] for product_id in featured_ids if product_id in by_id]

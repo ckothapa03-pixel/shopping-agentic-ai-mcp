@@ -214,4 +214,92 @@
         font-size: 1.55rem;
     }
 }
+
+/* Compact, accessible login presentation */
+.stApp [data-testid="stMainBlockContainer"] {
+    display: grid;
+    min-height: 100vh;
+    align-items: center;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+.stApp .st-key-login-card {
+    max-width: 410px;
+    margin: 0 auto;
+    padding: 1.25rem 1.35rem 1.35rem;
+    border-radius: 16px;
+}
+.login-brand {
+    margin-bottom: 0.65rem;
+}
+.login-wordmark {
+    font-size: 2.25rem;
+}
+.login-wordmark svg {
+    width: 2.65rem;
+    height: 2.65rem;
+    margin-right: 0.45rem;
+}
+.login-brand p {
+    margin-top: 0.15rem;
+}
+.login-intro {
+    margin-bottom: 0.35rem;
+}
+.login-intro h1 {
+    font-size: 1.55rem;
+}
+.login-intro p {
+    font-size: 0.92rem;
+}
+.stApp [data-testid="stForm"] [data-testid="stVerticalBlock"] {
+    gap: 0.45rem;
+}
+.stApp [data-testid="stTextInputRootElement"] {
+    min-height: 2.55rem;
+}
+.stApp [data-testid="stBaseButton-primaryFormSubmit"],
+.stApp [data-testid="stBaseButton-secondary"] {
+    min-height: 2.55rem;
+}
+.login-divider {
+    margin: 0.1rem 0;
+}
+.login-create-prompt {
+    margin-top: 0.1rem;
+}
+.stApp [data-testid="stTextInputRootElement"]:focus-within {
+    outline: 3px solid rgba(7, 142, 131, 0.16);
+    outline-offset: 1px;
+}
+.stApp [data-testid="stBaseButton"]:focus-visible,
+.stApp [data-testid="stCheckbox"] input:focus-visible {
+    outline: 3px solid rgba(7, 142, 131, 0.28);
+    outline-offset: 2px;
+}
+.stApp [data-testid="stAlert"] {
+    border-radius: 9px;
+}
+
+@media (max-height: 760px) {
+    .stApp [data-testid="stMainBlockContainer"] {
+        align-items: start;
+        padding-top: 0.45rem;
+        padding-bottom: 0.45rem;
+    }
+    .stApp .st-key-login-card {
+        padding-top: 0.95rem;
+        padding-bottom: 0.95rem;
+    }
+    .login-brand {
+        margin-bottom: 0.35rem;
+    }
+    .login-wordmark {
+        font-size: 1.95rem;
+    }
+    .login-wordmark svg {
+        width: 2.25rem;
+        height: 2.25rem;
+    }
+}
 </style>

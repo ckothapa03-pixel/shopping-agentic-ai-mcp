@@ -6,9 +6,19 @@ import streamlit as st
 
 from app.shopping.cart import add_to_cart
 from app.db.products import get_products_by_ids
-from app.db.user_data import set_cart_quantity, set_wishlist as persist_wishlist
+from app.db.user_data import (
+    set_cart_quantity,
+    set_wishlist as persist_wishlist,
+)
+from app.ui.product_images import get_product_image_path
+from app.ui.product_card_cart import render_cart_quantity_controls
 
 __all__ = ["_render_product"]
+
+def _render_cart_quantity_controls(product: dict[str, Any]) -> bool:
+    return render_cart_quantity_controls(product)
+
+
 
 def _render_product(
     product: dict[str, Any],
@@ -23,14 +33,28 @@ def _render_product(
         str(product.get("name") or "Catalog product"),
         quote=True,
     )
+    category = html.escape(str(product.get("category") or "Shopwise catalog"), quote=True)
     with st.container(border=True, key=f"product-card-{product_id}"):
-        st.markdown(
-            '<div class="product-image-placeholder'
-            f'{" featured-product-image" if featured else ""}" role="img" '
-            f'aria-label="Image of {accessible_name} unavailable">'
-            '<span aria-hidden="true">Product image unavailable</span></div>',
-            unsafe_allow_html=True,
-        )
+        image_path = get_product_image_path(product)
+        if image_path is not None:
+            st.image(
+                str(image_path),
+                caption=None,
+                width="stretch",
+            )
+        else:
+            st.markdown(
+                '<div class="'
+                f'product-image-fallback{" featured-product-image" if featured else ""}'
+                '" role="img" '
+                f'aria-label="Category illustration for {accessible_name}">'
+                '<span class="product-fallback-icon" aria-hidden="true">'
+                '<span class="product-fallback-box"></span>'
+                '</span>'
+                f'<span class="product-fallback-category">{category}</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
         wishlist_button = False
         if featured:
             wishlist_button = st.button(
@@ -60,7 +84,12 @@ def _render_product(
                 )
                 st.markdown(f"### ₹{product['price']:,.2f}")
             else:
-                st.subheader(product["name"])
+                st.markdown(
+                    '<div class="product-card-title">'
+                    f"{html.escape(str(product['name']))}"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
                 st.markdown(f"### ₹{product['price']:,.2f}")
                 st.caption(
                     f"{product.get('brand') or '—'} · "
@@ -69,7 +98,12 @@ def _render_product(
         else:
             details, actions = st.columns([3, 1], vertical_alignment="center")
             with details:
-                st.subheader(product["name"])
+                st.markdown(
+                    '<div class="product-card-title">'
+                    f"{html.escape(str(product['name']))}"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
                 st.markdown(f"### ₹{product['price']:,.2f}")
                 st.caption(
                     f"{product.get('brand') or '—'} · "
@@ -95,22 +129,30 @@ def _render_product(
 
         if grid_view:
             if featured:
-                add_button = st.button(
-                    "Add to cart",
-                    key=f"add-product-{product_id}",
-                    disabled=stock < 1,
-                    type="primary",
-                    width="stretch",
-                )
+                quantity_control_rendered = _render_cart_quantity_controls(product)
+                if quantity_control_rendered:
+                    add_button = False
+                else:
+                    add_button = st.button(
+                        "Add to cart",
+                        key=f"add-product-{product_id}",
+                        disabled=stock < 1,
+                        type="primary",
+                        width="stretch",
+                    )
             else:
                 action_columns = st.columns([1.3, 1], vertical_alignment="center")
-                add_button = action_columns[0].button(
-                    "Add to cart",
-                    key=f"add-product-{product_id}",
-                    disabled=stock < 1,
-                    type="primary",
-                    width="stretch",
-                )
+                quantity_control_rendered = _render_cart_quantity_controls(product)
+                if quantity_control_rendered:
+                    add_button = False
+                else:
+                    add_button = action_columns[0].button(
+                        "Add to cart",
+                        key=f"add-product-{product_id}",
+                        disabled=stock < 1,
+                        type="primary",
+                        width="stretch",
+                    )
                 wishlist_button = action_columns[1].button(
                     "Saved" if is_saved else "Save",
                     key=f"wishlist-product-{product_id}",
@@ -119,13 +161,16 @@ def _render_product(
                     width="stretch",
                 )
         else:
-            add_button = actions.button(
-                "Add to cart",
-                key=f"add-product-{product_id}",
-                disabled=stock < 1,
-                type="primary",
-                width="stretch",
-            )
+            quantity_control_rendered = _render_cart_quantity_controls(product)
+            add_button = False
+            if not quantity_control_rendered:
+                add_button = actions.button(
+                    "Add to cart",
+                    key=f"add-product-{product_id}",
+                    disabled=stock < 1,
+                    type="primary",
+                    width="stretch",
+                )
             wishlist_button = actions.button(
                 "Saved" if is_saved else "Save to wishlist",
                 key=f"wishlist-product-{product_id}",

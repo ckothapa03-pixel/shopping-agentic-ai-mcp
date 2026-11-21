@@ -26,6 +26,26 @@ CATEGORY_ICONS = (
     ("mobile", "devices"),
 )
 
+CATEGORY_IMAGES = {
+    "Audio": "headphones.svg",
+    "Cables & Chargers": "cables.svg",
+    "Gaming": "gaming.svg",
+    "Laptop Accessories": "laptop.svg",
+    "Mice & Keyboards": "mice-keyboard.svg",
+    "Monitors & Displays": "monitor.svg",
+    "Networking": "networking.svg",
+    "Smart Home": "smart-home.svg",
+    "Storage": "storage.svg",
+    "Wearables & Mobile": "wearable.svg",
+}
+
+def _category_image(category: str) -> Path | None:
+    for label, filename in CATEGORY_IMAGES.items():
+        if category.casefold() == label.casefold():
+            path = PROJECT_ROOT / "assets" / "images" / "categories" / filename
+            return path if path.is_file() else None
+    return None
+
 def _category_icon(category: str) -> str:
     normalized = category.casefold()
     return next(
@@ -60,6 +80,15 @@ def _render_home_hero() -> None:
                 type="primary",
                 on_click=_open_catalog,
             )
+            st.markdown(
+                '<div class="hero-trust-row">'
+                '<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h11v9H3zm11 4h4l3 3v2h-7zM6.5 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm10 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg><b>Fast Delivery</b><small>Across India</small></span>'
+                '<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l7 3v5c0 5-3 9-7 12-4-3-7-7-7-12V5zm0 3v13c2.5-2.2 4-4.8 4-8V7z"/></svg><b>Secure Shopping</b><small>100% Safe &amp; Trusted</small></span>'
+                '<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7V3l-4 4 4 4V8h8a4 4 0 0 1 4 4v1h2v-1a6 6 0 0 0-6-6zm10 10v4l4-4-4-4v3H9a4 4 0 0 1-4-4v-1H3v1a6 6 0 0 0 6 6z"/></svg><b>Easy Returns</b><small>Hassle-Free</small></span>'
+                '<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13v-2a8 8 0 0 1 16 0v2h-2v-2a6 6 0 0 0-12 0v2zm-2 1h4v6H2zm16 0h4v6h-4zm-7 5h6v2H11z"/></svg><b>24x7 Support</b><small>We are here for you</small></span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
         with visual:
             st.image(
                 str(HERO_IMAGE_PATH),
@@ -81,9 +110,10 @@ def _render_home_categories(categories: list[str]) -> None:
                 width="stretch",
             )
     with st.container(key="home-category-grid"):
-        for row_start in range(0, len(categories), 5):
-            row_categories = categories[row_start : row_start + 5]
-            columns = st.columns(5, gap="small", vertical_alignment="center")
+        cards_per_row = 10 if len(categories) <= 10 else 5
+        for row_start in range(0, len(categories), cards_per_row):
+            row_categories = categories[row_start : row_start + cards_per_row]
+            columns = st.columns(cards_per_row, gap="small", vertical_alignment="center")
             for index, (column, category) in enumerate(
                 zip(columns, row_categories), start=row_start
             ):
@@ -92,7 +122,11 @@ def _render_home_categories(categories: list[str]) -> None:
                         border=True,
                         key=f"home-category-card-{index}",
                     ):
-                        st.markdown(f":material/{_category_icon(category)}:")
+                        image_path = _category_image(category)
+                        if image_path is not None:
+                            st.image(str(image_path), width="content")
+                        else:
+                            st.markdown(f":material/{_category_icon(category)}:")
                         st.button(
                             category,
                             key=f"home-category-select-{index}",
@@ -130,7 +164,7 @@ def _render_homepage(categories: list[str]) -> None:
         st.info("There are no products to feature yet.")
     else:
         with st.container(key="featured-product-grid"):
-            columns = st.columns(6, gap="small")
+            columns = st.columns(6, gap="medium")
             for column, product in zip(columns, featured_products):
                 with column:
                     _render_product(product, grid_view=True, featured=True)

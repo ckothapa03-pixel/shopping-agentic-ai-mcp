@@ -11,11 +11,12 @@ from app.ui.cart_pages import _render_cart
 from app.ui.checkout_page import _render_demo_checkout
 from app.ui.chat.chat import _render_chat_launcher
 from app.ui.wishlist_page import _render_wishlist
-from app.db.schema import initialize_shopping_schema
+from app.db.schema import validate_account_schema, validate_shopping_schema
 from app.ui.address_pages import _render_addresses
 from app.ui.orders_page import _render_orders
 from app.ui.order_detail_page import _render_order_detail
 from app.ui.comparison_page import _render_comparison
+from app.db.user_data import get_cart, set_cart_quantity
 
 def _render_login_screen() -> None:
     render_login_screen()
@@ -26,9 +27,10 @@ def _inject_store_styles() -> None:
 def main() -> None:
     st.set_page_config(page_title="Shopwise", page_icon="🛍️", layout="wide")
     try:
-        initialize_shopping_schema()
-    except (OSError, sqlite3.Error):
-        st.error("Shopwise could not initialize local shopping data.")
+        validate_shopping_schema()
+        validate_account_schema()
+    except (OSError, sqlite3.Error, RuntimeError) as error:
+        st.error(str(error))
         return
 
     if st.session_state.get("access_mode") not in {"guest", "authenticated"}:
@@ -54,6 +56,27 @@ def main() -> None:
     ):
         if key not in st.session_state:
             st.session_state[key] = initial_value
+
+
+    if st.session_state.access_mode == "authenticated":
+        user_id = st.session_state.get("authenticated_user_id")
+        if isinstance(user_id, str) and st.session_state.get("_cart_synced_user_id") != user_id:
+            try:
+                guest_cart = dict(st.session_state.cart)
+                persisted_rows = get_cart(user_id)
+                merged_cart = {
+                    int(row["product_id"]): int(row["quantity"])
+                    for row in persisted_rows
+                    if row["product"] is not None
+                }
+                for product_id, quantity in guest_cart.items():
+                    merged_cart[product_id] = int(merged_cart.get(product_id, 0)) + int(quantity)
+                for product_id, quantity in merged_cart.items():
+                    set_cart_quantity(user_id, product_id, quantity)
+                st.session_state.cart = merged_cart
+                st.session_state["_cart_synced_user_id"] = user_id
+            except (PermissionError, OSError, sqlite3.Error):
+                st.session_state["_cart_synced_user_id"] = None
 
     _render_store_header()
 

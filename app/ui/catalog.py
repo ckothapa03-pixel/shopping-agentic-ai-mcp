@@ -13,6 +13,13 @@ from app.ui.catalog_data import (
 )
 from app.ui.catalog_home import _render_homepage
 from app.ui.product_card import _render_product
+from app.ui.catalog_filters import (
+    reset_catalog_filters,
+    reset_catalog_page,
+    sync_category_from_sidebar,
+    sync_product_layout_preference,
+)
+from app.ui.catalog_pagination import render_page_controls
 
 __all__ = [
     "PRODUCTS_PER_PAGE",
@@ -29,26 +36,10 @@ __all__ = [
 ]
 
 def _reset_catalog_page() -> None:
-    st.session_state["catalog_page"] = 1
+    reset_catalog_page()
 
 def _reset_catalog_filters() -> None:
-    for key in (
-        "catalog_search_input",
-        "catalog_search_query",
-        "category_nav",
-        "category_select",
-        "brand_select",
-        "min_price_filter",
-        "max_price_filter",
-        "rating_filter",
-        "stock_filter",
-        "sort_filter",
-        "product_view",
-        "catalog_search_query",
-    ):
-        st.session_state.pop(key, None)
-    _reset_catalog_page()
-    st.session_state["catalog_view"] = False
+    reset_catalog_filters()
 
 def _clear_catalog_search() -> None:
     st.session_state["catalog_search_query"] = ""
@@ -76,16 +67,10 @@ def _sync_category_from_nav() -> None:
     st.session_state["catalog_view"] = True
 
 def _sync_category_from_sidebar() -> None:
-    st.session_state["category_nav"] = st.session_state.get(
-        "category_select", "All Categories"
-    )
-    _reset_catalog_page()
-    st.session_state["catalog_view"] = True
+    sync_category_from_sidebar()
 
 def _sync_product_layout_preference() -> None:
-    st.session_state["catalog_layout_preference"] = st.session_state.get(
-        "product_view", "Grid"
-    )
+    sync_product_layout_preference()
 
 def _load_cart_products() -> dict[int, dict[str, Any]] | None:
     try:
@@ -101,40 +86,7 @@ def _render_page_controls(
     *,
     key_prefix: str,
 ) -> None:
-    if total_pages <= 1:
-        return
-
-    first_page = max(1, min(current_page - 2, total_pages - 4))
-    page_numbers = range(first_page, min(total_pages, first_page + 4) + 1)
-    controls = st.columns(len(page_numbers) + 2, vertical_alignment="center")
-    if controls[0].button(
-        "Previous",
-        key=f"{key_prefix}-previous",
-        disabled=current_page == 1,
-        width="stretch",
-    ):
-        st.session_state.catalog_page = current_page - 1
-        st.rerun()
-
-    for column, page_number in zip(controls[1:-1], page_numbers):
-        if column.button(
-            str(page_number),
-            key=f"{key_prefix}-page-{page_number}",
-            type="primary" if page_number == current_page else "secondary",
-            width="stretch",
-        ):
-            st.session_state.catalog_page = page_number
-            st.rerun()
-
-    if controls[-1].button(
-        "Next",
-        key=f"{key_prefix}-next",
-        disabled=current_page == total_pages,
-        width="stretch",
-    ):
-        st.session_state.catalog_page = current_page + 1
-        st.rerun()
-    st.caption(f"Page {current_page} of {total_pages}")
+    render_page_controls(current_page, total_pages, key_prefix=key_prefix)
 
 def _render_shop(facets: dict[str, list[str]]) -> None:
     active_search = st.session_state.get("catalog_search_query", "").strip()

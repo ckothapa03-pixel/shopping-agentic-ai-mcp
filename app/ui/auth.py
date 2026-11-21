@@ -103,9 +103,9 @@ def render_login_screen() -> None:
                 vertical_alignment="center",
             ):
                 st.checkbox(
-                    "Remember me for 30 days",
+                    "Remember me",
                     disabled=True,
-                    help="Persistent sign-in is not implemented in this app.",
+                    help="Persistent sign-in is not implemented. Sessions use the current browser session only.",
                     key="remember-me",
                 )
                 forgot_password = st.form_submit_button(
