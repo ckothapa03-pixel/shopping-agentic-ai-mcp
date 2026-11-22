@@ -24,6 +24,10 @@ MAX_PASSWORD_LENGTH = 1024
 _DUMMY_PASSWORD_SALT = b"shopwise-invalid-account-salt"
 _AUTH_LOG = logging.getLogger("app.authentication")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+REGISTRATION_UNAVAILABLE_MESSAGE = (
+    "Self-service registration is unavailable because this app cannot verify "
+    "email ownership. Sign in with an existing account or continue as a guest."
+)
 
 
 class Account(TypedDict):
@@ -84,44 +88,11 @@ def register_account(
     db_path: Path | str | None = None,
     shopping_db_path: Path | str | None = None,
 ) -> Account:
-    normalized_email, password = _validated_credentials(email, password)
+    """Reject self-service linking until email ownership can be verified."""
+    _validated_credentials(email, password)
     if not isinstance(full_name, str) or not full_name.strip():
         raise ValueError("Enter your name.")
-
-    shopping_user = resolve_shopping_user(
-        normalized_email,
-        db_path=shopping_db_path,
-        account_db_path=db_path,
-    )
-    if shopping_user is None:
-        raise ValueError(
-            "This email is not linked to an active Shopwise shopping profile."
-        )
-
-    salt = secrets.token_bytes(16)
-    password_hash = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt,
-        PASSWORD_ITERATIONS,
-    )
-    try:
-        with _account_connection(db_path) as connection:
-            connection.execute(
-                """
-                INSERT INTO accounts (email, full_name, password_salt, password_hash)
-                VALUES (?, ?, ?, ?)
-                """,
-                (normalized_email, full_name.strip(), salt, password_hash),
-            )
-    except sqlite3.IntegrityError as error:
-        raise ValueError("An account with that email already exists.") from error
-    _AUTH_LOG.info("event=account_registered")
-    return {
-        "email": normalized_email,
-        "full_name": full_name.strip(),
-        "user_id": shopping_user["user_id"],
-    }
+    raise ValueError(REGISTRATION_UNAVAILABLE_MESSAGE)
 
 
 def authenticate_account(

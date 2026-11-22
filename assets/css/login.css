@@ -73,7 +73,7 @@
 }
 .login-brand p {
     margin: 0.25rem 0 0;
-    color: #687b9b;
+    color: #52647d;
     font-size: 0.9rem;
 }
 .login-intro {
@@ -94,7 +94,7 @@
 }
 .login-intro p {
     margin: 0.2rem 0 0;
-    color: #687b9b;
+    color: #52647d;
     font-size: 1rem;
 }
 .stApp [data-testid="stTextInputRootElement"] {
@@ -112,13 +112,13 @@
     box-shadow: 0 0 0 1px #078e83;
 }
 .stApp [data-testid="stTextInputRootElement"] input::placeholder {
-    color: #8190aa;
+    color: #52647d;
 }
 .stApp [data-testid="stBaseButton-primaryFormSubmit"] {
     min-height: 2.75rem;
-    border: 1px solid #078e83;
+    border: 1px solid #06786f;
     border-radius: 9px;
-    background: #078e83;
+    background: #06786f;
     color: #fff;
 }
 .stApp [data-testid="stBaseButton-primaryFormSubmit"] p {
@@ -126,8 +126,8 @@
     font-weight: 650;
 }
 .stApp [data-testid="stBaseButton-primaryFormSubmit"]:hover {
-    border-color: #06786f;
-    background: #06786f;
+    border-color: #055e57;
+    background: #055e57;
     color: #fff;
 }
 .stApp [data-testid="stBaseButton-secondary"] {
@@ -163,7 +163,7 @@
     align-items: center;
     gap: 0.8rem;
     margin: 0.25rem 0 0.1rem;
-    color: #71819e;
+    color: #52647d;
     font-size: 0.9rem;
 }
 .login-divider::before,
@@ -175,7 +175,7 @@
 }
 .login-create-prompt {
     margin: 0.2rem 0 0;
-    color: #71819e;
+    color: #52647d;
     text-align: center;
     font-size: 0.9rem;
 }
@@ -184,10 +184,10 @@
     border-color: #d9f6f0;
     border-radius: 9px;
     background: #dff8f3;
-    color: #008b80;
+    color: #06786f;
 }
 .stApp .st-key-create-account button p {
-    color: #008b80;
+    color: #06786f;
     font-weight: 650;
 }
 .stApp .st-key-create-account button:hover {

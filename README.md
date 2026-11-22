@@ -37,6 +37,26 @@ Startup verifies the required tables and columns without exposing records. To ru
 python -c "from app.db.schema import validate_shopping_schema, validate_account_schema; validate_shopping_schema(); validate_account_schema(); print('Database readiness checks passed')"
 ```
 
+## Operations and diagnostics
+
+Run a safe local readiness report from the project root:
+
+```powershell
+python -m app.health
+```
+
+It checks the supported Python runtime and required Streamlit, Gemini, dotenv, and MCP imports, validates both existing databases read-only, and reports whether Gemini is configured. It prints only component status and safe guidance; failures are logged without exception text, credentials, database paths, or records. `UNHEALTHY` exits with code 1. Missing Gemini configuration is `DEGRADED` because shopping remains available, and exits with code 0. This command checks readiness; it does not determine whether a separate Streamlit process is currently serving traffic.
+
+MCP is started only when a chat request needs it. The readiness command does not launch an MCP subprocess or contact Gemini, so it cannot verify their live service availability. To diagnose a startup failure, review the Streamlit process logs. Logs are written to stderr; set `SHOPWISE_LOG_LEVEL` to a Python logging level such as `WARNING`, `INFO`, or `DEBUG` to adjust detail. The default is `INFO`; chat timing details remain opt-in with `SHOPWISE_CHAT_TIMING=1`.
+
+Common checks:
+
+- **Database check failed:** confirm both configured paths point to existing files with the expected schema and that the application account can access them. Startup validation never creates or repairs databases.
+- **Gemini is not configured:** set `GEMINI_API_KEY` in the project-root `.env` for local use or in the deployment secret environment, then restart the app.
+- **Chat reports connection, timeout, or provider errors:** check outbound network access, the configured key's access, and the selected `GEMINI_MODEL`; the health command deliberately makes no API request.
+- **MCP chat startup fails:** inspect the Streamlit stderr logs and run the MCP subprocess test from the automated test suite. The server is not kept running between chat requests.
+- **Dependency/import check fails:** install the pinned direct dependencies with `python -m pip install -r requirements.txt`, then run `python -m pip check`.
+
 For a non-default shopping database, set `SHOPWISE_DB_PATH` to its absolute path before starting the app. Set `SHOPPING_AUTH_DB` to override the accounts database path. Both files must already exist.
 
 ## Configuration and secrets
@@ -63,7 +83,7 @@ From the project root, start the Streamlit UI:
 python -m streamlit run app\ui\web_app.py
 ```
 
-The startup validator checks both database files before rendering the login screen. Users can browse as guests; account-only data and order flows require an authenticated identity. Account registration expects an active, already-linked shopper record. Password recovery and external payment processing are not configured.
+The startup validator checks both database files before rendering the login screen. Users can browse as guests; account-only data and order flows require an authenticated identity. Self-service account registration is disabled until the application has a trusted way to verify email ownership; provisioned accounts can still sign in. Password recovery and external payment processing are not configured.
 
 The Gemini client starts the FastMCP server as a local stdio subprocess when a chat request needs tools. The application supplies authenticated context to that process; do not launch a server with a user ID supplied by an untrusted caller. For standalone MCP inspection, use the MCP Inspector with `python -m app.mcp.mcp_server` as its command and arguments. Do not type ordinary text into the MCP server's protocol terminal.
 

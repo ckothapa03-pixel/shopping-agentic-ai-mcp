@@ -34,9 +34,15 @@ def render_cart_quantity_controls(product: dict[str, Any]) -> bool:
     quantity = int(st.session_state.cart.get(product_id, 0))
     if quantity < 1:
         return False
+    product_name = str(product.get("name") or "this product")
     with st.container(key=f"cart-quantity-controls-{product_id}"):
         controls = st.columns([1, 1.25, 1], gap="small")
-        decrease = controls[0].button("−", key=f"decrease-cart-{product_id}", width="stretch")
+        decrease = controls[0].button(
+            "−",
+            key=f"decrease-cart-{product_id}",
+            help=f"Decrease {product_name} quantity in your cart",
+            width="stretch",
+        )
         controls[1].markdown(
             f'<div class="st-key-cart-quantity-value">{quantity}</div>',
             unsafe_allow_html=True,
@@ -45,6 +51,7 @@ def render_cart_quantity_controls(product: dict[str, Any]) -> bool:
             "+",
             key=f"increase-cart-{product_id}",
             disabled=quantity >= stock,
+            help=f"Increase {product_name} quantity in your cart",
             width="stretch",
         )
     if decrease:

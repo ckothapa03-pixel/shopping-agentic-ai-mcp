@@ -128,7 +128,10 @@ def _render_product(
 
             with st.expander("Product details"):
                 st.write(product["description"] or "No description available.")
-                st.caption(f"SKU: {product['sku']} · MRP: ₹{product['mrp']:,.2f}")
+                st.caption(
+                    f"Product ID: {product_id} · SKU: {product['sku']} · "
+                    f"MRP: ₹{product['mrp']:,.2f}"
+                )
 
         if grid_view:
             if featured:

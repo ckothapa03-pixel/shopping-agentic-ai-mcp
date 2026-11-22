@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 from google.genai.errors import ClientError
 from app.db.products import count_products, find_products, get_catalog_facets
 import app.db.database as database
+from app.shopping.authentication import REGISTRATION_UNAVAILABLE_MESSAGE
 from streamlit.testing.v1 import AppTest
 from tests.database_fixture import create_shopwise_databases
 
@@ -43,8 +44,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self.test_accounts = {}
 
         def register_account(email, password, full_name):
-            normalized_email = email.strip().lower()
-            self.test_accounts[normalized_email] = (password, full_name.strip())
+            raise ValueError(REGISTRATION_UNAVAILABLE_MESSAGE)
 
         def authenticate_account(email, password):
             account = self.test_accounts.get(email.strip().lower())
@@ -135,6 +135,18 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         )
         add_button.click().run()
         self.assertEqual(len(self.app.session_state["cart"]), 1)
+        decrease_button = next(
+            button
+            for button in self.app.button
+            if button.key.startswith("decrease-cart-")
+        )
+        increase_button = next(
+            button
+            for button in self.app.button
+            if button.key.startswith("increase-cart-")
+        )
+        self.assertIn("Decrease", decrease_button.help)
+        self.assertIn("Increase", increase_button.help)
         self.assertTrue(any(button.key == "open-cart" for button in self.app.button))
         self.assertTrue(
             any("Cart total:" in element.value for element in self.app.markdown)
@@ -197,7 +209,7 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         )
         self.assertIn("Sign In", [button.label for button in self.app.form_submit_button])
 
-    def test_create_account_then_verified_login_opens_authenticated_shop(self) -> None:
+    def test_registration_explains_email_verification_is_unavailable(self) -> None:
         self._button("Create an Account").click().run()
         self.assertIn(
             "Create your account",
@@ -211,11 +223,16 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self._text_input("register-confirm-password").set_value("demo-password")
         self._submit("Create account").click().run()
         self.assertIn(
-            "Account created. Sign in with your new credentials.",
-            [element.value for element in self.app.success],
+            REGISTRATION_UNAVAILABLE_MESSAGE,
+            [error.value for error in self.app.error],
         )
+        self.assertFalse(self.app.success)
         self._assert_no_shop()
-
+        self._button("Back to login").click().run()
+        self.assertTrue(
+            any(button.label == "Create an Account" for button in self.app.button)
+        )
+        self.test_accounts["demo@example.com"] = ("demo-password", "Demo Shopper")
         self._text_input("login-email").set_value("demo@example.com")
         self._text_input("login-password").set_value("wrong-password")
         self._submit("Sign In").click().run()
@@ -228,7 +245,6 @@ class ShoppingAccessNavigationTests(unittest.TestCase):
         self._text_input("login-email").set_value("demo@example.com")
         self._text_input("login-password").set_value("demo-password")
         self._submit("Sign In").click().run()
-
         self.assertTrue(
             any(item.value == "Shop by Category" for item in self.app.subheader)
         )

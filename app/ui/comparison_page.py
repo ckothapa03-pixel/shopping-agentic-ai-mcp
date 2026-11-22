@@ -7,7 +7,10 @@ from app.ui.error_messages import safe_error_message
 
 def _render_comparison() -> None:
     st.header("Compare products")
-    raw = st.text_input("Product IDs (comma-separated)")
+    raw = st.text_input(
+        "Product IDs (comma-separated)",
+        help="Find a product ID by expanding Product details on a catalog card.",
+    )
     if not raw:
         st.info("Enter 2 to 4 product IDs.")
         return

@@ -24,7 +24,11 @@ def _render_addresses() -> None:
             st.write(f"**{address['label']}** {'(Default)' if address['is_default'] else ''}")
             st.write(address["line1"])
             st.caption(f"{address['city']}, {address['state']} - {address['pincode']}")
-            if st.button("Delete", key=f"delete-address-{address['id']}"):
+            if st.button(
+                "Delete",
+                key=f"delete-address-{address['id']}",
+                help=f"Delete the {address['label']} address",
+            ):
                 try:
                     delete_address(user_id, address["id"])
                     st.rerun()

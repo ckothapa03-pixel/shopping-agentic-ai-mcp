@@ -1,3 +1,4 @@
+import hashlib
 import sqlite3
 import unittest
 
@@ -6,6 +7,7 @@ from app.db.identity import (
     resolve_shopping_user_by_id,
 )
 from app.shopping.authentication import (
+    PASSWORD_ITERATIONS,
     authenticate_account,
     change_account_password,
     get_account_profile,
@@ -142,9 +144,13 @@ class IdentityFoundationTests(unittest.TestCase):
             )
         )
 
-    def test_registration_authentication_profile_and_password_use_isolated_dbs(
+    def test_provisioned_account_authentication_profile_and_password_use_isolated_dbs(
         self,
     ) -> None:
+        salt = b"isolated-test-salt"
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256", b"correct-horse", salt, PASSWORD_ITERATIONS
+        )
         account_connection = sqlite3.connect(self.account_db)
         try:
             account_connection.execute(
@@ -154,18 +160,16 @@ class IdentityFoundationTests(unittest.TestCase):
                 """,
                 ("shopper@example.com", "USR-100"),
             )
+            account_connection.execute(
+                """
+                INSERT INTO accounts (email, full_name, password_salt, password_hash)
+                VALUES (?, ?, ?, ?)
+                """,
+                ("shopper@example.com", "Demo Shopper", salt, password_hash),
+            )
             account_connection.commit()
         finally:
             account_connection.close()
-        account = register_account(
-            "Shopper@example.com",
-            "correct-horse",
-            "Demo Shopper",
-            db_path=self.account_db,
-            shopping_db_path=self.shopping_db,
-        )
-        self.assertEqual(account["user_id"], "USR-100")
-
         authenticated = authenticate_account(
             "SHOPPER@example.com",
             "correct-horse",
@@ -220,22 +224,35 @@ class IdentityFoundationTests(unittest.TestCase):
         self.assertEqual(authenticated["user_id"], "USR-100")
 
     def test_registration_rejects_unlinked_and_inactive_profiles(self) -> None:
-        with self.assertRaisesRegex(ValueError, "not linked"):
-            register_account(
-                "unknown@example.com",
-                "correct-horse",
-                "Unknown Shopper",
-                db_path=self.account_db,
-                shopping_db_path=self.shopping_db,
+        connection = sqlite3.connect(self.account_db)
+        try:
+            connection.execute(
+                """
+                INSERT INTO identity_mappings (account_email, user_id)
+                VALUES (?, ?)
+                """,
+                ("shopper@example.com", "USR-100"),
             )
-        with self.assertRaisesRegex(ValueError, "not linked"):
-            register_account(
-                "inactive@example.com",
-                "correct-horse",
-                "Inactive Shopper",
-                db_path=self.account_db,
-                shopping_db_path=self.shopping_db,
-            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        messages = []
+        for email in (
+            "shopper@example.com",
+            "unknown@example.com",
+            "inactive@example.com",
+        ):
+            with self.assertRaises(ValueError) as error:
+                register_account(
+                    email,
+                    "correct-horse",
+                    "Demo Shopper",
+                    db_path=self.account_db,
+                    shopping_db_path=self.shopping_db,
+                )
+            messages.append(str(error.exception))
+        self.assertEqual(len(set(messages)), 1)
 
     def test_authorization_helpers_require_canonical_ownership(self) -> None:
         guest = {"access_mode": "guest"}

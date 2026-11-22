@@ -22,6 +22,10 @@ def _render_orders() -> None:
         with st.container(border=True):
             st.write(f"**Order #{order['id']}**")
             st.write(f"{order['created_at']} · {order['status']} · ₹{order['total']:,.2f}")
-            if st.button("View details", key=f"view-order-{order['id']}"):
+            if st.button(
+                "View details",
+                key=f"view-order-{order['id']}",
+                help=f"View details for order {order['id']}",
+            ):
                 st.session_state.store_page = f"order-detail:{order['id']}"
                 st.rerun()
