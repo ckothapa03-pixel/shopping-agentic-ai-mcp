@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.shopping.authentication import (
     REGISTRATION_UNAVAILABLE_MESSAGE,
     authenticate_account,
+    normalize_email,
     register_account,
 )
 from app.db.schema import validate_account_schema
@@ -98,10 +99,53 @@ class AccountAuthenticationTests(unittest.TestCase):
     def test_rejects_invalid_registration_input(self) -> None:
         with self.assertRaisesRegex(ValueError, "valid email"):
             register_account("not-an-email", "correct-horse", "Demo Shopper")
+        with self.assertRaisesRegex(ValueError, "valid email"):
+            register_account("shopper@@example.com", "correct-horse", "Demo Shopper")
+        with self.assertRaisesRegex(ValueError, "valid email"):
+            register_account("shopper@example", "correct-horse", "Demo Shopper")
+        with self.assertRaisesRegex(ValueError, "valid email"):
+            register_account("shopper@-example.com", "correct-horse", "Demo Shopper")
+        with self.assertRaisesRegex(ValueError, "valid email"):
+            register_account("shopper name@example.com", "correct-horse", "Demo Shopper")
         with self.assertRaisesRegex(ValueError, "between 12"):
             register_account("new@example.com", "short", "Demo Shopper")
         with self.assertRaisesRegex(ValueError, "Enter your name"):
             register_account("new@example.com", "correct-horse", " ")
+
+    def test_email_normalization_and_validation(self) -> None:
+        self.assertEqual(normalize_email("  SHOPPER@Example.COM  "), "shopper@example.com")
+        self.assertEqual(normalize_email("first.last+tag@example.co.uk"), "first.last+tag@example.co.uk")
+
+        invalid_emails = (
+            None,
+            123,
+            "",
+            "@example.com",
+            "shopper@",
+            "shopper@@example.com",
+            "shopper@example",
+            "shopper name@example.com",
+            "shopper@exam ple.com",
+            "shopper@-example.com",
+            "shopper@example-.com",
+            "shopper@.example.com",
+            ".shopper@example.com",
+            "shopper..name@example.com",
+        )
+        for email in invalid_emails:
+            with self.subTest(email=email):
+                self.assertIsNone(normalize_email(email))
+
+    def test_email_validation_rejects_long_and_repeated_character_input(self) -> None:
+        unusually_long = "a" * 300 + "@example.com"
+        repeated_malicious_input = "a@" + ("x" * 10000) + ".com"
+
+        self.assertIsNone(normalize_email(unusually_long))
+        self.assertIsNone(normalize_email(repeated_malicious_input))
+        with self.assertRaisesRegex(ValueError, "valid email"):
+            register_account(unusually_long, "correct-horse", "Demo Shopper")
+        with self.assertRaisesRegex(ValueError, "valid email"):
+            register_account(repeated_malicious_input, "correct-horse", "Demo Shopper")
 
     def test_account_schema_validation_uses_an_isolated_database(self) -> None:
         _shopping_db, account_db = create_shopwise_databases(self)

@@ -2,7 +2,6 @@ import hashlib
 import hmac
 import logging
 import os
-import re
 import secrets
 import sqlite3
 from contextlib import contextmanager
@@ -23,7 +22,9 @@ MIN_PASSWORD_LENGTH = 12
 MAX_PASSWORD_LENGTH = 1024
 _DUMMY_PASSWORD_SALT = b"shopwise-invalid-account-salt"
 _AUTH_LOG = logging.getLogger("app.authentication")
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+MAX_EMAIL_LENGTH = 254
+MAX_LOCAL_PART_LENGTH = 64
+MAX_DOMAIN_LENGTH = 253
 REGISTRATION_UNAVAILABLE_MESSAGE = (
     "Self-service registration is unavailable because this app cannot verify "
     "email ownership. Sign in with an existing account or continue as a guest."
@@ -68,11 +69,52 @@ def _account_connection(
         connection.close()
 
 
-def _validated_credentials(email: str, password: str) -> tuple[str, str]:
+def normalize_email(email: object) -> str | None:
     if not isinstance(email, str):
-        raise ValueError("Enter a valid email address.")
-    normalized_email = email.strip().lower()
-    if not EMAIL_PATTERN.fullmatch(normalized_email):
+        return None
+    if len(email) > MAX_EMAIL_LENGTH:
+        return None
+
+    normalized = email.strip().lower()
+    if not normalized or len(normalized) > MAX_EMAIL_LENGTH:
+        return None
+    if any(character.isspace() for character in normalized):
+        return None
+    if normalized.count("@") != 1:
+        return None
+
+    local_part, domain = normalized.split("@")
+    if not local_part or not domain:
+        return None
+    if len(local_part) > MAX_LOCAL_PART_LENGTH:
+        return None
+    if local_part.startswith(".") or local_part.endswith(".") or ".." in local_part:
+        return None
+    if any(ord(character) < 33 or ord(character) == 127 for character in local_part):
+        return None
+
+    if len(domain) > MAX_DOMAIN_LENGTH or "." not in domain:
+        return None
+    domain_labels = domain.split(".")
+    if any(not label for label in domain_labels):
+        return None
+    for label in domain_labels:
+        if len(label) > 63:
+            return None
+        if label.startswith("-") or label.endswith("-"):
+            return None
+        if any(
+            not (character.isascii() and (character.isalnum() or character == "-"))
+            for character in label
+        ):
+            return None
+
+    return normalized
+
+
+def _validated_credentials(email: str, password: str) -> tuple[str, str]:
+    normalized_email = normalize_email(email)
+    if normalized_email is None:
         raise ValueError("Enter a valid email address.")
     if not isinstance(password, str) or not MIN_PASSWORD_LENGTH <= len(password) <= MAX_PASSWORD_LENGTH:
         raise ValueError(
@@ -112,7 +154,7 @@ def authenticate_account(
         record_login_failure(normalized_email)
         _AUTH_LOG.warning("event=login_failed reason=invalid_credentials")
         return None
-    if not EMAIL_PATTERN.fullmatch(normalized_email):
+    if normalize_email(normalized_email) is None:
         record_login_failure(normalized_email)
         _AUTH_LOG.warning("event=login_failed reason=invalid_credentials")
         return None
@@ -252,7 +294,7 @@ def change_account_password(
     if not isinstance(email, str) or not isinstance(current_password, str):
         raise ValueError("Enter your current email and password.")
     normalized_email = email.strip().lower()
-    if not EMAIL_PATTERN.fullmatch(normalized_email):
+    if normalize_email(normalized_email) is None:
         raise ValueError("Enter a valid email address.")
     if not isinstance(new_password, str) or not MIN_PASSWORD_LENGTH <= len(new_password) <= MAX_PASSWORD_LENGTH:
         raise ValueError(
